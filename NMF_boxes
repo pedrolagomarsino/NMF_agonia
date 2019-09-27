@@ -1,0 +1,83 @@
+## lets try to do NMF on boxes of AGONIA
+
+## first import pickle
+from time import time
+import pickle
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.decomposition import NMF
+import holoviews as hv
+hv.extension('matplotlib')
+
+
+#import data
+# each list in boxes is a box. with first dimension height, second width and third time
+filename = '/home/pedro/Work/AGOnIA/Boxes-data/patches.pkl'
+with open(filename,'rb') as f:
+    boxes = pickle.load(f)
+    f.close()
+
+def NMF_dec(box, n_components=1,init=None,random_state=None):
+    cell=boxes[box]
+    ##Reshape data to have boxes as single columns x time
+    X = np.array([cell[:,:,i].reshape((np.size(cell,0)*np.size(cell,1))) for i in range(np.size(cell,2))]).T
+    # fit NMF
+    model = NMF(n_components=n_components, init=init, random_state=random_state)
+    W = model.fit_transform(X)
+    H = model.components_
+    return W,H
+
+def component_anim(W,H,n_component,frames_range):
+    frames = {f: hv.Image(np.array(W[:,n_component]*H[n_component,f]).reshape(np.shape(cell[:,:,0]))).opts(cmap='Viridis') for f in frames_range}
+    %output holomap='gif' size=200
+    return hv.HoloMap(frames)
+
+# check the similarity with the median/mean
+W,H = NMF_dec(box=5,n_components=3)
+ti = time()
+points_W = []
+points_med = []
+points_mean = []
+for i in range(len(boxes)):
+    W,H = NMF_dec(box=i,n_components=1)
+    points_W = np.append(np.array(points_W),W[:,0]/np.linalg.norm(W))
+    points_mean = np.append(np.array(points_mean),np.mean(boxes[i],axis=2).reshape((np.size(boxes[i],0)*np.size(boxes[i],1)))/np.linalg.norm(np.mean(boxes[i],axis=2)))
+    points_med = np.append(np.array(points_med),np.median(boxes[i],axis=2).reshape((np.size(boxes[i],0)*np.size(boxes[i],1)))/np.linalg.norm(np.median(boxes[i],axis=2)))
+tf = time()
+print(tf-ti)
+scatter_med = hv.Scatter(np.array([points_W,points_med]).T,['First component','Median'])
+scatter_mean = hv.Scatter(np.array([points_W,points_mean]).T,['First component','Mean'])
+layout = scatter_mean + scatter_med
+layout
+
+plt.plot(points_med,points_mean,'.')
+
+#plot factors
+n_cell = 5
+cell = boxes[n_cell]
+W,H = NMF_dec(box=n_cell,n_components=20)
+plt.imshow(W[:,17].reshape(np.shape(cell[:,:,0])))
+plt.plot(H[2,:])
+
+# animation
+component_anim(W,H,n_component=2,frames_range=range(1000,1200))
+
+C=np.cov(H)
+fig=plt.figure()
+pos = plt.imshow(C)
+fig.colorbar(pos)
+plt.hist(W[:,0])
+plt.plot(np.median(X,axis=0))
+
+
+t=time()
+model = NMF(n_components=1, init='random', random_state=0)
+W = model.fit_transform(X)
+H = model.components_
+t1 =time()
+t1-t
+
+t=time()
+np.median(X,axis=0)
+t1 =time()
+t1-t
