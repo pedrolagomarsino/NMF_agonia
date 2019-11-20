@@ -12,7 +12,7 @@ hv.extension('matplotlib')
 
 #import data
 # each list in boxes is a box. with first dimension height, second width and third time
-filename = '/home/pedro/Work/AGOnIA/Boxes-data/patches.pkl'
+filename = '/home/pedro/Work/AGOnIA/Boxes-data/Seeded-Caiman/patches.pkl'
 with open(filename,'rb') as f:
     boxes = pickle.load(f)
     f.close()
