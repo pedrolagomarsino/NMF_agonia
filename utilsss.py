@@ -1,6 +1,9 @@
 import os
 os.chdir('/home/pedro/keras-retinanet')
 from AGOnIA import AGOnIA
+import warnings
+warnings.filterwarnings("ignore",category=FutureWarning)
+warnings.filterwarnings("ignore",category=DeprecationWarning)
 import pickle
 import matplotlib.pyplot as plt
 import numpy as np
@@ -71,12 +74,12 @@ def caiman_motion_correct(fnames,opts):
     border_to_0=border_to_0, dview=dview) # exclude borders
     cm.stop_server(dview=dview)
 
-def agonia_detect(data_path,data_name,median_projection):
+def agonia_detect(data_path,data_name,median_projection,multiplier=1,th=0.05):
     det = AGOnIA('L4+CA1_800.h5',True)
-    ROIs = det.detect(median_projection,threshold=0.01,multiplier=2)
+    ROIs = det.detect(median_projection,threshold=th,multiplier=multiplier)
     pickle.dump( ROIs, open( os.path.join(data_path,os.path.splitext(data_name[0])[0] + '_boxes.pkl'), "wb" ) )
 
-def seeded_Caiman_wAgonia(data_path,opts):
+def seeded_Caiman_wAgonia(data_path,opts,agonia_th):
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
 
     Yr, dims, T = cm.load_memmap(fname_new)
@@ -93,11 +96,18 @@ def seeded_Caiman_wAgonia(data_path,opts):
     with open(boxes_path,'rb') as f:
         cajas = pickle.load(f)
         f.close()
+    cajas = cajas[cajas[:,4]>agonia_th]
+
+    half_width  = np.mean(cajas[:,2]-cajas[:,0])/2
+    half_height = np.mean(cajas[:,3]-cajas[:,1])/2
+    gSig= (half_width.astype(int),half_height.astype(int))
+    opts_dict = {'gSig': gSig}
+    opts.change_params(opts_dict);
 
     Ain = np.zeros((np.prod(images.shape[1:]),cajas.shape[0]),dtype=bool)
     for i,box in enumerate(cajas):
         frame = np.zeros(images.shape[1:])
-        frame[box[0].astype('int'):box[2].astype('int'),box[1].astype('int'):box[3].astype('int')]=1
+        frame[box[1].astype('int'):box[3].astype('int'),box[0].astype('int'):box[2].astype('int')]=1
         Ain[:,i] = frame.flatten('F')#frame.reshape(np.prod(images.shape[1:])).astype(bool)
 
     cnm_seeded = cnmf.CNMF(n_processes, params=opts, dview=dview, Ain=Ain)
@@ -109,7 +119,7 @@ def seeded_Caiman_wAgonia(data_path,opts):
 
     cm.stop_server(dview=dview)
 
-def trace_correlation(data_path, select_cells=False):
+def trace_correlation(data_path, agonia_th, select_cells=False,plot_results=True):
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     # load Caiman results
     cnm = cnmf.load_CNMF(results_caiman_path)
@@ -117,8 +127,18 @@ def trace_correlation(data_path, select_cells=False):
     with open(boxes_path,'rb') as f:
         boxes = pickle.load(f)
         f.close()
-    boxes = boxes[:,:4].astype('int')
+    boxes = boxes[boxes[:,4]>agonia_th].astype('int')
+    boxes.shape
+    cnm.estimates.C.shape
+    #delete boxes that do not have a caiman cell inside
+    k = 0
+    for cell,box in enumerate(boxes):
+        if np.sum(cnm.estimates.A[:,cell-k].toarray().reshape(cnm.estimates.dims,order='F'
+                    )[box[1]:box[3],box[0]:box[2]])==0:
+            boxes = np.delete(boxes,cell-k,axis=0)
+            k += 1
 
+    boxes.shape
     ### compare temporal traces ###
     # calculate mean over the box and do coefcorr with the caiman trace get a value
     # of correlation for each cell
@@ -129,29 +149,54 @@ def trace_correlation(data_path, select_cells=False):
     boxes_traces = np.empty((boxes.shape[0],images.shape[0]))
 
     for i,box in enumerate(boxes):
-        boxes_traces[i] = images[:,box[0]:box[2],box[1]:box[3]].mean(axis=(1,2))
-        boxes_traces[i] = images[:,box[0]:box[2],box[1]:box[3]].mean(axis=(1,2))
+        boxes_traces[i] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))
 
     cell_corr = np.empty(len(boxes_traces))
     for cell,Cai in enumerate(cnm.estimates.C):
         cell_corr[cell] = np.corrcoef([Cai,boxes_traces[cell]])[1,0]
 
     if select_cells:
-        #idx_active = [cell for cell,trace in enumerate(boxes_traces) if
-        #              np.mean((trace-np.mean(trace))**2)/np.std(trace)**2>active_th]
         fitness, _, _, _ = compute_event_exceptionality(boxes_traces)
         idx_active = [cell for cell,fit in enumerate(fitness) if fit<-20]
 
     else:
         idx_active = [cell for cell,_ in enumerate(boxes_traces)]
 
-    corr_toplot = [corr for id,corr in enumerate(cell_corr) if id in idx_active and ~np.isnan(corr)]
-    fig,ax = plt.subplots()
-    p = ax.boxplot(corr_toplot)
-    ax.set_ylim([-1,1])
-    plt.text(1.2,0.8,'n_cells = {}'.format(len(corr_toplot)))
+    if plot_results:
+        corr_toplot = [corr for id,corr in enumerate(cell_corr) if id in idx_active and ~np.isnan(corr)]
+        fig,ax = plt.subplots()
+        p = ax.boxplot(corr_toplot)
+        ax.set_ylim([-1,1])
+        plt.text(1.2,0.8,'n_cells = {}'.format(len(corr_toplot)))
 
     return cell_corr, idx_active, boxes_traces
+
+def center_of_mass(spatial_factor,dims):
+    image = spatial_factor.toarray().reshape(dims,order='F')
+    vectors = [np.array([i,j])*image[i,j] for i in range(image.shape[0]) for j in range(image.shape[1])]
+    CM = sum(vectors)/np.sum(image)
+    return CM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

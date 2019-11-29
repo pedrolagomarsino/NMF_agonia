@@ -27,13 +27,14 @@ def NMF_dec(box, n_components=1,init=None,random_state=None):
     H = model.components_
     return W,H
 
-def component_anim(W,H,n_component,frames_range):
+def component_anim(box,W,H,n_component,frames_range):
+    cell=boxes[box]
     frames = {f: hv.Image(np.array(W[:,n_component]*H[n_component,f]).reshape(np.shape(cell[:,:,0]))).opts(cmap='Viridis') for f in frames_range}
     %output holomap='gif' size=200
     return hv.HoloMap(frames)
 
 # check the similarity with the median/mean
-W,H = NMF_dec(box=5,n_components=3)
+W,H = NMF_dec(box=5,n_components=2)
 ti = time()
 points_W = []
 points_med = []
@@ -60,7 +61,7 @@ plt.imshow(W[:,17].reshape(np.shape(cell[:,:,0])))
 plt.plot(H[2,:])
 
 # animation
-component_anim(W,H,n_component=2,frames_range=range(1000,1200))
+component_anim(5,W,H,n_component=1,frames_range=range(1000,1200))
 
 C=np.cov(H)
 fig=plt.figure()
