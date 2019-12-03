@@ -33,7 +33,7 @@ L4_names = ['449','447', '448', '486', '488', '857',
 PATH = '/media/pedro/DATAPART1/AGOnIA/Tiff_samples'
 FOLDERS = os.listdir(PATH)
 
-for folder in L4_large_names:
+for folder in FOLDERS:
 
     print('Analyzing folder {}'.format(folder))
     if folder in Mesoscopio_names:
@@ -52,9 +52,7 @@ for folder in L4_large_names:
         print('What kind of recording is this? Dont know what multiplier to use')
         break
 
-
     data_path = os.path.join(PATH,folder)
-    #data_path = '/media/pedro/DATAPART1/AGOnIA/Tiff samles/2433'
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
 
     if not results_caiman_path:
@@ -132,14 +130,9 @@ for folder in L4_large_names:
         except:
             print('unknown error')
 
-#data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
-
-#corr_1, idx_1 = ut.trace_correlation(data_path,select_cells=True)
-FOLO = Mesoscopio_names+L4_large_names
+########## correlation between Caiman factors and mean of Agonia boxes##########
 M = np.zeros(len(FOLDERS))
 MA = np.zeros(len(FOLDERS))
-#5,6,7,8,10,15,18,19,20,21,22,23,24,25
-np.array(FOLDERS)[[5,6,7,8,10,15,18,19,20,21,22,23,24,25]]
 for e,folder in enumerate(FOLDERS):
     print('Analyzing folder {}'.format(folder))
     if folder in Mesoscopio_names:
@@ -152,14 +145,13 @@ for e,folder in enumerate(FOLDERS):
         print('What kind of recording is this?')
         break
     data_path = os.path.join(PATH,folder)
-    #data_path = '/media/pedro/DATAPART1/AGOnIA/Tiff samles/2433'
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
 
     if results_caiman_path:
-        #corr, idx,boxes_traces = ut.trace_correlation1(data_path, agonia_th=agonia_th,
+        #corr, idx,boxes_traces = ut.trace_correlation(data_path, agonia_th=agonia_th,
         #select_cells=False,plot_results=True)
         #plt.savefig(os.path.join(data_path,os.path.splitext(data_name[0])[0]+'_all_cells_corr.png'))
-        corr_active, idx_active, boxes_traces_active = ut.trace_correlation1(data_path,
+        corr_active, idx_active, boxes_traces_active = ut.trace_correlation(data_path,
         agonia_th=agonia_th,select_cells=True,plot_results=False)
         #plt.savefig(os.path.join(data_path,os.path.splitext(data_name[0])[0]+'_active_cells_corr.png'))
         #plt.hist(corr_active)
@@ -178,8 +170,7 @@ data[['All_cells', 'Active']].plot(kind='box',ylim=[0,1])
 # significantly higher
 scipy.stats.ttest_rel(data['All_cells'], data['Active'])
 
-FOLDERS
-# when is caiman detecting 2 cells in one box?
+####################### See boxes and caiman cell centers#####################
 data_path = os.path.join(PATH,FOLDERS[2])
 data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
 cnm = cnmf.load_CNMF(results_caiman_path)
@@ -200,16 +191,7 @@ for factor in cnm.estimates.A.T:
     plt.plot(dot[1],dot[0],'.',color='yellow')
 plt. tight_layout()
 
-centerss = np.empty((cnm.estimates.A.shape[1],2))
-for i,factor in enumerate(cnm.estimates.A.T):
-    centerss[i] = center_of_mass(factor.toarray().reshape(cnm.estimates.dims,order='F'))
-box_idx = 41
-pepe = [i for i,center in enumerate(centerss) if center[0]>boxes[box_idx,1] and
- center[0]<boxes[box_idx,3] and center[1]>boxes[box_idx,0] and center[1]<boxes[box_idx,2]]
-pepe
-np.where(centerss==pepe[0])
-pepe[0]
-centerss[0]
+################Save median projection with agonia boxes on top#################
 for folder in FOLDERS:
     print('Analyzing folder {}'.format(folder))
     if folder in Mesoscopio_names:
@@ -248,7 +230,7 @@ for folder in FOLDERS:
         plt.savefig(os.path.join(save_path,os.path.splitext(data_name[0])[0]+'_agonia_boxes.png'))
 
 
-
+################################################################################
 data_path = os.path.join(PATH,'2414')
 data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
 cnm = cnmf.load_CNMF(results_caiman_path)
