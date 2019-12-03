@@ -13,6 +13,7 @@ import caiman as cm
 from caiman.motion_correction import MotionCorrect
 from caiman.source_extraction.cnmf import cnmf as cnmf
 from caiman.components_evaluation import compute_event_exceptionality
+from scipy.ndimage.measurements import center_of_mass
 
 def NMF_dec(box, n_components=1,init=None,random_state=None):
     cell=boxes[box]
@@ -129,7 +130,7 @@ def trace_correlation(data_path, agonia_th, select_cells=False,plot_results=True
         f.close()
     boxes = boxes[boxes[:,4]>agonia_th].astype('int')
     boxes.shape
-    cnm.estimates.C.shape
+    cnm.estimates.A.shape
     #delete boxes that do not have a caiman cell inside
     k = 0
     for cell,box in enumerate(boxes):
@@ -137,8 +138,9 @@ def trace_correlation(data_path, agonia_th, select_cells=False,plot_results=True
                     )[box[1]:box[3],box[0]:box[2]])==0:
             boxes = np.delete(boxes,cell-k,axis=0)
             k += 1
-
+            print(cell)
     boxes.shape
+    k
     ### compare temporal traces ###
     # calculate mean over the box and do coefcorr with the caiman trace get a value
     # of correlation for each cell
@@ -171,17 +173,71 @@ def trace_correlation(data_path, agonia_th, select_cells=False,plot_results=True
 
     return cell_corr, idx_active, boxes_traces
 
-def center_of_mass(spatial_factor,dims):
-    image = spatial_factor.toarray().reshape(dims,order='F')
-    vectors = [np.array([i,j])*image[i,j] for i in range(image.shape[0]) for j in range(image.shape[1])]
-    CM = sum(vectors)/np.sum(image)
-    return CM
+def trace_correlation1(data_path, agonia_th, select_cells=False,plot_results=True):
+    data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
+    # load Caiman results
+    cnm = cnmf.load_CNMF(results_caiman_path)
+    centers = np.empty((cnm.estimates.A.shape[1],2))
+    for i,factor in enumerate(cnm.estimates.A.T):
+        centers[i] = center_of_mass(factor.toarray().reshape(cnm.estimates.dims,order='F'))
+
+    with open(boxes_path,'rb') as f:
+        boxes = pickle.load(f)
+        f.close()
+    boxes = boxes[boxes[:,4]>agonia_th].astype('int')
+
+    #delete boxes that do not have a caiman cell inside
+    k = 0
+    for cell,box in enumerate(boxes):
+        idx_factor = [i for i,center in enumerate(centers) if center[0]>box[1] and
+         center[0]<box[3] and center[1]>box[0] and center[1]<box[2]]
+        if not idx_factor:
+            boxes = np.delete(boxes,cell-k,axis=0)
+            k += 1
+
+    ### compare temporal traces ###
+    # calculate mean over the box and do coefcorr with the caiman trace get a value
+    # of correlation for each cell
+
+    # calculate mean for each AGOnIA box
+    Yr, dims, T = cm.load_memmap(fname_new)
+    images = np.reshape(Yr.T, [T] + list(dims), order='F')
+    boxes_traces = np.empty((boxes.shape[0],images.shape[0]))
+
+    cell_corr = np.empty(len(boxes_traces))
+    for cell,box in enumerate(boxes):
+        boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))
+        idx_factor = [i for i,center in enumerate(centers) if center[0]>box[1] and
+         center[0]<box[3] and center[1]>box[0] and center[1]<box[2]]
+        if len(idx_factor)>1:
+            #print('ups! more than once center inside box %2d'%(cell))
+            #choose the one closer to the center of the box
+            idx_factor = [idx_factor[np.argmin([np.linalg.norm([(box[3]-box[1])/2,
+                                    (box[2]-box[0])/2]-c) for c in centers[idx_factor]])]]
+
+        cell_corr[cell] = np.corrcoef([cnm.estimates.C[idx_factor[0]],boxes_traces[cell]])[1,0]
+
+    if select_cells:
+        fitness, _, _, _ = compute_event_exceptionality(boxes_traces)
+        idx_active = [cell for cell,fit in enumerate(fitness) if fit<-20]
+
+    else:
+        idx_active = [cell for cell,_ in enumerate(boxes_traces)]
+
+    if plot_results:
+        corr_toplot = [corr for id,corr in enumerate(cell_corr) if id in idx_active and ~np.isnan(corr)]
+        fig,ax = plt.subplots()
+        p = ax.boxplot(corr_toplot)
+        ax.set_ylim([-1,1])
+        plt.text(1.2,0.8,'n_cells = {}'.format(len(corr_toplot)))
+
+    return cell_corr, idx_active, boxes_traces
 
 
 
-
-
-
+#PATH = '/media/pedro/DATAPART1/AGOnIA/Tiff_samples'
+#FOLDERS = os.listdir(PATH)
+#data_path = os.path.join(PATH,FOLDERS[2])
 
 
 

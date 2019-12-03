@@ -16,6 +16,7 @@ from caiman.source_extraction.cnmf import cnmf as cnmf
 from caiman.source_extraction.cnmf import params as params
 import scipy.stats
 import pandas as pd
+from scipy.ndimage.measurements import center_of_mass
 hv.extension('matplotlib')
 
 
@@ -155,20 +156,17 @@ for e,folder in enumerate(FOLDERS):
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
 
     if results_caiman_path:
-        try:
-            #corr, idx,boxes_traces = ut.trace_correlation(data_path, agonia_th=agonia_th,
-            #select_cells=False,plot_results=True)
-            #plt.savefig(os.path.join(data_path,os.path.splitext(data_name[0])[0]+'_all_cells_corr.png'))
-            corr_active, idx_active, boxes_traces_active = ut.trace_correlation(data_path,
-            agonia_th=agonia_th,select_cells=True,plot_results=False)
-            #plt.savefig(os.path.join(data_path,os.path.splitext(data_name[0])[0]+'_active_cells_corr.png'))
-            #plt.hist(corr_active)
-            #plt.show()
+        #corr, idx,boxes_traces = ut.trace_correlation1(data_path, agonia_th=agonia_th,
+        #select_cells=False,plot_results=True)
+        #plt.savefig(os.path.join(data_path,os.path.splitext(data_name[0])[0]+'_all_cells_corr.png'))
+        corr_active, idx_active, boxes_traces_active = ut.trace_correlation1(data_path,
+        agonia_th=agonia_th,select_cells=True,plot_results=False)
+        #plt.savefig(os.path.join(data_path,os.path.splitext(data_name[0])[0]+'_active_cells_corr.png'))
+        #plt.hist(corr_active)
+        #plt.show()
+        if idx_active:
             M[e]   = np.nanmean(corr_active)
             MA[e] = np.nanmean(corr_active[idx_active])
-        except:
-            print('More cells in Caiman than boxes in Agonia')
-
 
 p = plt.plot(np.array([1,2]), np.array([M[M!=0],MA[MA!=0]]),'.-')
 
@@ -176,10 +174,42 @@ plt.hist(M[M!=0],np.linspace(0,1,21))
 h = plt.hist(MA[MA!=0],np.linspace(0,1,21),alpha=0.5)
 data = pd.DataFrame(np.array([M[M!=0],MA[MA!=0]]).T,columns=['All_cells','Active'])
 data
-data[['All_cells', 'Active']].plot(kind='box')
+data[['All_cells', 'Active']].plot(kind='box',ylim=[0,1])
 # significantly higher
 scipy.stats.ttest_rel(data['All_cells'], data['Active'])
 
+FOLDERS
+# when is caiman detecting 2 cells in one box?
+data_path = os.path.join(PATH,FOLDERS[2])
+data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
+cnm = cnmf.load_CNMF(results_caiman_path)
+with open(boxes_path,'rb') as f:
+    boxes = pickle.load(f)
+    f.close()
+boxes = boxes[boxes[:,4]>.3].astype('int')
+boxes.shape
+cnm.estimates.A.shape
+fig,ax = plt.subplots(figsize=(15,15))
+ax.imshow(median_projection,'gray')
+for box in boxes:
+    rect = Rectangle((box[0],box[1]), box[2]-box[0],
+          box[3]-box[1],color='r',fill=False)
+    ax.add_patch(rect)
+for factor in cnm.estimates.A.T:
+    dot = center_of_mass(factor.toarray().reshape(cnm.estimates.dims,order='F'))
+    plt.plot(dot[1],dot[0],'.',color='yellow')
+plt. tight_layout()
+
+centerss = np.empty((cnm.estimates.A.shape[1],2))
+for i,factor in enumerate(cnm.estimates.A.T):
+    centerss[i] = center_of_mass(factor.toarray().reshape(cnm.estimates.dims,order='F'))
+box_idx = 41
+pepe = [i for i,center in enumerate(centerss) if center[0]>boxes[box_idx,1] and
+ center[0]<boxes[box_idx,3] and center[1]>boxes[box_idx,0] and center[1]<boxes[box_idx,2]]
+pepe
+np.where(centerss==pepe[0])
+pepe[0]
+centerss[0]
 for folder in FOLDERS:
     print('Analyzing folder {}'.format(folder))
     if folder in Mesoscopio_names:
@@ -286,7 +316,7 @@ rect = Rectangle((boxes[cell,0],boxes[cell,1]), boxes[cell,2]-boxes[cell,0],
 ax.add_patch(rect)
 plt.imshow(cnm.estimates.A[:,cell].toarray().reshape(cnm.estimates.dims,order='F'))#[boxes[cell,1]:
                                                 boxes[cell,3],boxes[cell,0]:boxes[cell,2]])
-cnm.estimates.plot_contours_nb(img=median_projection,idx=[cell])
+cnm.estimates.plot_contours_nb(img=median_projection)
 plt.imshow(cnm.estimates.A[:,cell].toarray().reshape(cnm.estimates.dims,order='C'))
 cnm.estimates.A[:,0].reshape([324,328])
 len(idx_active)
