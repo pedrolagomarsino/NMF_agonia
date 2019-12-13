@@ -1,19 +1,23 @@
 import os
 os.chdir('/home/pedro/keras-retinanet')
-from AGOnIA import AGOnIA
+import pickle
 import warnings
-warnings.filterwarnings("ignore",category=FutureWarning)
-warnings.filterwarnings("ignore",category=DeprecationWarning)
+import numpy as np
+import caiman as cm
+import holoviews as hv
+from AGOnIA import AGOnIA
+from holoviews import opts
+from holoviews import streams
 import matplotlib.pyplot as plt
 from sklearn.decomposition import NMF
-import pickle
-import numpy as np
-import matplotlib.pyplot as plt
-import caiman as cm
+from matplotlib.patches import Rectangle
+from holoviews.streams import Stream, param
 from caiman.motion_correction import MotionCorrect
+from scipy.ndimage.measurements import center_of_mass
 from caiman.source_extraction.cnmf import cnmf as cnmf
 from caiman.components_evaluation import compute_event_exceptionality
-from scipy.ndimage.measurements import center_of_mass
+warnings.filterwarnings("ignore",category=FutureWarning)
+warnings.filterwarnings("ignore",category=DeprecationWarning)
 
 def NMF_dec(box, n_components=1,init=None,random_state=None):
     cell=boxes[box]
@@ -202,6 +206,137 @@ def trace_correlation(data_path, agonia_th, select_cells=False,plot_results=True
         plt.text(1.2,0.8,'n_cells = {}'.format(len(corr_toplot)))
 
     return cell_corr, idx_active, boxes_traces
+
+def run_caiman_pipeline(data_path,opts,refit=False,component_evaluation=False,fr=14.913,rf=15,decay_time=0.6):
+    data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
+    opts_dict = {'only_init': True,
+                 'rf': rf,#15
+                 'fr': fr,#14.913,
+                 'decay_time': decay_time}#0.6
+    opts.change_params(opts_dict);
+
+    if 'dview' in locals():
+        cm.stop_server(dview=dview)
+    c, dview, n_processes = cm.cluster.setup_cluster(
+    backend='local', n_processes=None, single_thread=False)
+
+    Yr, dims, T = cm.load_memmap(fname_new)
+    images = np.reshape(Yr.T, [T] + list(dims), order='F')
+
+    cnm = cnmf.CNMF(n_processes, params=opts, dview=dview)
+    cnm = cnm.fit(images)
+
+    if refit:
+        cnm2 = cnm.refit(images, dview=dview)
+
+    if component_evaluation:
+        cnm2.estimates.evaluate_components(images, cnm2.params, dview=dview)
+        cnm2.estimates.select_components(use_object=True)
+
+    if 'dview' in locals():
+        cm.stop_server(dview=dview)
+    return cnm, cnm2
+
+def plot_AGonia_boxes(data_path,Score,box_idx):
+    data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
+    Yr, dims, T = cm.load_memmap(fname_new)
+    images = np.reshape(Yr.T, [T] + list(dims), order='F')
+    images = images[3:]#delete first 3 frames that are noise
+    with open(boxes_path,'rb') as f:
+        boxes = pickle.load(f)
+        f.close()
+    boxes = boxes[boxes[:,4]>Score].astype('int')
+    roi_bounds = hv.Path([hv.Bounds(tuple([roi[0],median_projection.shape[0]-roi[1],roi[2],median_projection.shape[0]
+                                           -roi[3]])) for roi in boxes[:,:4]]).options(color='red')
+    img = hv.Image(median_projection,bounds=(0,0,median_projection.shape[1],median_projection.shape[0]
+                                                          )).options(cmap='gray')
+
+    box_trace = images[:,boxes[box_idx,1]:boxes[box_idx,3],boxes[box_idx,0]:boxes[box_idx,2]].mean(axis=(1,2))
+    box_square = hv.Path([hv.Bounds(tuple([boxes[box_idx,0],median_projection.shape[0]-boxes[box_idx,1],boxes[box_idx,2],
+                            median_projection.shape[0]-boxes[box_idx,3]]))]).options(color='lime')
+    return ((img*roi_bounds*box_square).opts(width=600,height=600)+hv.Curve((np.linspace(0,len(box_trace)-1,
+            len(box_trace)),box_trace),'Frame','Mean box Fluorescence').opts(width=600,framewise=True)).cols(1)
+
+def plot_AGonia_boxes_interactive(data_path,Score,x,y):
+    data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
+    Yr, dims, T = cm.load_memmap(fname_new)
+    images = np.reshape(Yr.T, [T] + list(dims), order='F')
+    images = images[3:]#delete first 3 frames that are noise
+    with open(boxes_path,'rb') as f:
+        boxes = pickle.load(f)
+        f.close()
+    boxes = boxes[boxes[:,4]>Score].astype('int')
+    roi_bounds = hv.Path([hv.Bounds(tuple([roi[0],median_projection.shape[0]-roi[3],roi[2],median_projection.shape[0]
+                                           -roi[1]])) for roi in boxes[:,:4]]).options(color='red')
+
+    if None not in [x,y]:
+        try:
+            box_idx = [i for i,box in enumerate(boxes) if x<box[2] and x>box[0] and y<(median_projection.shape[0]-box[1])
+                    and y>(median_projection.shape[0]-box[3])][0]
+        except:
+            pass
+    else:
+        box_idx = 0
+    #box_trace = images[:,boxes[box_idx,1]:boxes[box_idx,3],boxes[box_idx,0]:boxes[box_idx,2]].mean(axis=(1,2))
+    box_square = hv.Path([hv.Bounds(tuple([boxes[box_idx,0],median_projection.shape[0]-boxes[box_idx,3],boxes[box_idx,2],
+                            median_projection.shape[0]-boxes[box_idx,1]]))]).options(color='lime')
+    return (roi_bounds*box_square).opts(width=600,height=600)
+
+def plot_boxes_traces(data_path,Score,x,y):
+    data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
+    Yr, dims, T = cm.load_memmap(fname_new)
+    images = np.reshape(Yr.T, [T] + list(dims), order='F')
+    images = images[3:]#delete first 3 frames that are noise
+    with open(boxes_path,'rb') as f:
+        boxes = pickle.load(f)
+        f.close()
+    boxes = boxes[boxes[:,4]>Score].astype('int')
+
+    if None not in [x,y]:
+        try:
+            box_idx = [i for i,box in enumerate(boxes) if x<box[2] and x>box[0] and y<(median_projection.shape[0]-box[1])
+                    and y>(median_projection.shape[0]-box[3])][0]
+        except:
+            pass
+    else:
+        box_idx = 0
+    box_trace = images[:,boxes[box_idx,1]:boxes[box_idx,3],boxes[box_idx,0]:boxes[box_idx,2]].mean(axis=(1,2))
+    return hv.Curve((np.linspace(0,len(box_trace)-1,len(box_trace)),box_trace),'Frame','Mean box Fluorescence'
+                    ).opts(width=600)#,framewise=True
+
+def boxes_exploration(data_path):
+    data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
+    with open(boxes_path,'rb') as f:
+        boxes = pickle.load(f)
+        f.close()
+
+    kdims=[hv.Dimension('Score', values=np.arange(0.05,1,0.05)),
+        hv.Dimension('box_idx',values=np.arange(0,len(boxes),1))]
+    Experiment = Stream.define('Experiment', data_path=data_path)
+    dmap = hv.DynamicMap(plot_AGonia_boxes, kdims=kdims,streams=[Experiment()])
+    return dmap
+
+def boxes_exploration_interactive(data_path):
+    data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
+    img = hv.Image(median_projection,bounds=(0,0,median_projection.shape[1],median_projection.shape[0]
+                                                          )).options(cmap='gray')
+    with open(boxes_path,'rb') as f:
+        boxes = pickle.load(f)
+        f.close()
+    kdims=[hv.Dimension('Score', values=np.arange(0.05,1,0.05))]
+    tap = streams.SingleTap(transient=True,source=img)
+    Experiment = Stream.define('Experiment', data_path=data_path)
+    dmap = hv.DynamicMap(plot_AGonia_boxes_interactive, kdims=kdims,streams=[Experiment(),tap])
+    dmap1 = hv.DynamicMap(plot_boxes_traces, kdims=kdims,streams=[Experiment(),tap])
+    return ((img*dmap).opts(width=600,height=600)+dmap1).opts(opts.Curve(framewise=True)).cols(1)
+
+
+
+
+
+
+
+
 
 
 
