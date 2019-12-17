@@ -85,9 +85,10 @@ def caiman_motion_correct(fnames,opts):
 
 def agonia_detect(data_path,data_name,median_projection,multiplier=1,th=0.05):
     '''detect cells with Agonia using the median projection and save results.
-    INPUTS: Multiplier: set ad hoc for each dataset
-            th: threshold for confidence of box, default is 0.05 which is the
-                minimum. It is recommended to detect all and filter afterwards'''
+    INPUTS: Multiplier: set a priori for each dataset
+            th: threshold for confidence of box, default is 0.05.
+            It is recommended to detect using the default which is the minimun
+            and filter afterwards'''
     det = AGOnIA('L4+CA1_800.h5',True)
     ROIs = det.detect(median_projection,threshold=th,multiplier=multiplier)
     pickle.dump( ROIs, open( os.path.join(data_path,os.path.splitext(data_name[0])[0] + '_boxes.pkl'), "wb" ) )
@@ -131,6 +132,7 @@ def seeded_Caiman_wAgonia(data_path,opts,agonia_th):
     cnm_seeded = cnmf.CNMF(n_processes, params=opts, dview=dview, Ain=Ain)
     try:
         cnm_seeded.fit(images)
+        cnm_seeded.estimates.detrend_df_f(quantileMin=50,frames_window=2000,detrend_only=False)
         cnm_seeded.save(os.path.join(data_path,os.path.splitext(data_name[0])[0] + '_analysis_results.hdf5'))
     except:
         print('Tenemos un problema...')
@@ -141,14 +143,15 @@ def trace_correlation(data_path, agonia_th, select_cells=False,plot_results=True
     '''Calculate the correlation between the mean of the Agonia Box and the CaImAn
     factor.
     INPUTS:
-            agonia_th: confidence threshold to consider Agonia boxes
-            select_cells: if True select active cells for the correlation analysis
-            plot_results: if True do boxplot of correlation values for all selected cells
+            agonia_th: confidence threshold for detected Agonia boxes
+            select_cells: if True get index of active cells
+            plot_results: if True do boxplot of correlation values for all cells, if
+                          selected_cells, use only active cells
     OUTPUT:
             cell_corr: corrcoef value for all cells
             idx_active: if select_cells=True returns index of active cells, otherwise
                         returns index of all cells
-            boxes_traces: tempral trace for each box that has an asociated caiman factor'''
+            boxes_traces: temporal trace for each box that has an asociated caiman factor'''
 
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     # load Caiman results
@@ -208,6 +211,18 @@ def trace_correlation(data_path, agonia_th, select_cells=False,plot_results=True
     return cell_corr, idx_active, boxes_traces
 
 def run_caiman_pipeline(data_path,opts,refit=False,component_evaluation=False,fr=14.913,rf=15,decay_time=0.6):
+    '''Run the caiman pipeline out of the box, without using Agonia seeds.
+    INPUTS:
+            data_path: path with tif movie and median projection
+            opts: object with caiman option parameters
+            refit: if True re-run CNMF seeded on the selected components from the fitting
+            component_evaluation: if True filter components using shape and signal criteria
+            fr = frame rate of video
+            rf = half-size of the patches in pixels (in seeded is None)
+            decay_time = decay time of calcium indicator
+    OUTPUT:
+            cnm: out of the box results of caiman detection
+            cnm2: refited-filtered results if refit, component_evaluations flags are True'''
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     opts_dict = {'only_init': True,
                  'rf': rf,#15
@@ -238,10 +253,16 @@ def run_caiman_pipeline(data_path,opts,refit=False,component_evaluation=False,fr
     return cnm, cnm2
 
 def plot_AGonia_boxes(data_path,Score,box_idx):
+    '''Function used as input for the dynamic map in function boxes_exploration():
+    holoviews based plot to see Agonia boxes on top of median projection and mean trace
+    for selected boxes.
+    INPUTS:
+            data_path: path to folder with data and analysis results
+            Score: agonia confidence treshold to filter boxes
+            box_idx: index of box to plot trace, selected cell is indicated with green square'''
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     Yr, dims, T = cm.load_memmap(fname_new)
     images = np.reshape(Yr.T, [T] + list(dims), order='F')
-    images = images[3:]#delete first 3 frames that are noise
     with open(boxes_path,'rb') as f:
         boxes = pickle.load(f)
         f.close()
@@ -258,10 +279,13 @@ def plot_AGonia_boxes(data_path,Score,box_idx):
             len(box_trace)),box_trace),'Frame','Mean box Fluorescence').opts(width=600,framewise=True)).cols(1)
 
 def plot_AGonia_boxes_interactive(data_path,Score,x,y):
+    '''Function used as input for the dynamic map in function boxes_exploration_interactive():
+    Same as plot_AGonia_boxes but now instead of having as input the index of the box the user
+    can click on a box and it will use the (x,y) coordinates of the click to find the related box.
+    The output now is only the boxes (all in red, selected in green)'''
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     Yr, dims, T = cm.load_memmap(fname_new)
     images = np.reshape(Yr.T, [T] + list(dims), order='F')
-    images = images[3:]#delete first 3 frames that are noise
     with open(boxes_path,'rb') as f:
         boxes = pickle.load(f)
         f.close()
@@ -283,10 +307,12 @@ def plot_AGonia_boxes_interactive(data_path,Score,x,y):
     return (roi_bounds*box_square).opts(width=600,height=600)
 
 def plot_boxes_traces(data_path,Score,x,y):
+    '''Function used as input for the dynamic map in function boxes_exploration_interactive():
+    returns the mean(calculated inside the box) flouroescence in time of the selected
+    cell. Selection is done by the user by clicking on the box'''
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     Yr, dims, T = cm.load_memmap(fname_new)
     images = np.reshape(Yr.T, [T] + list(dims), order='F')
-    images = images[3:]#delete first 3 frames that are noise
     with open(boxes_path,'rb') as f:
         boxes = pickle.load(f)
         f.close()
@@ -301,10 +327,41 @@ def plot_boxes_traces(data_path,Score,x,y):
     else:
         box_idx = 0
     box_trace = images[:,boxes[box_idx,1]:boxes[box_idx,3],boxes[box_idx,0]:boxes[box_idx,2]].mean(axis=(1,2))
-    return hv.Curve((np.linspace(0,len(box_trace)-1,len(box_trace)),box_trace),'Frame','Mean box Fluorescence'
-                    ).opts(width=600)#,framewise=True
+    return hv.Curve((np.linspace(0,len(box_trace)-1,len(box_trace)),box_trace),'Frame','Mean box Fluorescence')
+            #+hv.Curve((np.linspace(0,len(box_trace)-1,len(box_trace)),caiman_df_f),'Frame','DF/F CaImAn')
+            #)#.cols(1)#.opts(width=600)
+
+def plot_seeded_traces(data_path,cnm,Score,x,y,centers):
+    '''Function used as input for the dynamic map in function boxes_exploration_interactive():
+    returns the DF/F trace calculated with caiman of the corresponding factor of the selected box.
+    Selection is done by the user by clicking on the box'''
+    data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
+    with open(boxes_path,'rb') as f:
+        boxes = pickle.load(f)
+        f.close()
+    boxes = boxes[boxes[:,4]>Score].astype('int')
+    if None not in [x,y]:
+        try:
+            box_idx = [i for i,box in enumerate(boxes) if x<box[2] and x>box[0] and y<(median_projection.shape[0]-box[1])
+                    and y>(median_projection.shape[0]-box[3])][0]
+        except:
+            pass
+    else:
+        box_idx = 0
+    idx_factor = [i for i,center in enumerate(centers) if center[0]>boxes[box_idx,1] and
+     center[0]<boxes[box_idx,3] and center[1]>boxes[box_idx,0] and center[1]<boxes[box_idx,2]]
+    # in case there is more than one center inside the box choose the one closer to the center of the box
+    if len(idx_factor)>1:
+        idx_factor = [idx_factor[np.argmin([np.linalg.norm([(boxes[box_idx,3]-boxes[box_idx,1])/2,
+                                (boxes[box_idx,2]-boxes[box_idx,0])/2]-c) for c in centers[idx_factor]])]]
+
+    caiman_df_f = cnm.estimates.F_dff[idx_factor[0]]
+    return hv.Curve((np.linspace(0,len(caiman_df_f)-1,len(caiman_df_f)),caiman_df_f),'Frame','DF/F CaImAn')
 
 def boxes_exploration(data_path):
+    '''Returns an interactive plot with the agonia boxes with a confidence value above
+    a Score selected by the user with a slider. The user can see the mean-trace of a
+    specific box and scroll through the boxes with a slider'''
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     with open(boxes_path,'rb') as f:
         boxes = pickle.load(f)
@@ -317,19 +374,30 @@ def boxes_exploration(data_path):
     return dmap
 
 def boxes_exploration_interactive(data_path):
+    '''Returns an interactive plot with the agonia boxes with a confidence value above
+    a Score selected by the user with a slider. The user can select a box by clicking on it
+    and mean box Fluorescence and the Caiman DF/F of such box will be ploted.'''
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
+    cnm = cnmf.load_CNMF(results_caiman_path)
     img = hv.Image(median_projection,bounds=(0,0,median_projection.shape[1],median_projection.shape[0]
                                                           )).options(cmap='gray')
     with open(boxes_path,'rb') as f:
         boxes = pickle.load(f)
         f.close()
+
+    centers = np.empty((cnm.estimates.A.shape[1],2))
+    for i,factor in enumerate(cnm.estimates.A.T):
+        centers[i] = center_of_mass(factor.toarray().reshape(cnm.estimates.dims,order='F'))
+    #scatter =  hv.Scatter((centers[:,1], median_projection.shape[0] - centers[:,0]))
     kdims=[hv.Dimension('Score', values=np.arange(0.05,1,0.05))]
     tap = streams.SingleTap(transient=True,source=img)
     Experiment = Stream.define('Experiment', data_path=data_path)
+    Centers = Stream.define('Centers', centers=centers)
+    CaImAn_detection = Stream.define('CaImAn_detection', cnm=cnm)
     dmap = hv.DynamicMap(plot_AGonia_boxes_interactive, kdims=kdims,streams=[Experiment(),tap])
     dmap1 = hv.DynamicMap(plot_boxes_traces, kdims=kdims,streams=[Experiment(),tap])
-    return ((img*dmap).opts(width=600,height=600)+dmap1).opts(opts.Curve(framewise=True)).cols(1)
-
+    dmap2 = hv.DynamicMap(plot_seeded_traces,kdims=kdims,streams=[CaImAn_detection(), Experiment(),tap,Centers()])
+    return ((img*dmap).opts(width=500,height=500)+dmap1.opts(width=500,height=250)+dmap2.opts(width=500,height=250)).opts(opts.Curve(framewise=True)).cols(1)
 
 
 
