@@ -1,23 +1,24 @@
 import os
+import time
 import pickle
 import warnings
+import scipy.stats
+import numpy as np
+import pandas as pd
+import caiman as cm
+import holoviews as hv
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+from scipy.ndimage.measurements import center_of_mass
+from caiman.source_extraction.cnmf import cnmf as cnmf
+from caiman.source_extraction.cnmf import params as params
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore",category=FutureWarning)
     warnings.filterwarnings("ignore",category=DeprecationWarning)
     warnings.filterwarnings("ignore",category=FutureWarning)
     import utilsss as ut
-import caiman as cm
-import numpy as np
-import time
-import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
-import holoviews as hv
-from caiman.source_extraction.cnmf import cnmf as cnmf
-from caiman.source_extraction.cnmf import params as params
-import scipy.stats
-import pandas as pd
-from scipy.ndimage.measurements import center_of_mass
 hv.extension('matplotlib')
+
 
 
 #name of files ordered by agonia params needed
@@ -53,6 +54,7 @@ for folder in FOLDERS:
         break
 
     data_path = os.path.join(PATH,folder)
+    #data_path = '/media/pedro/DATAPART1/Zebastiano/DualColor/2019Dec10/5098/TSeries-12082019-1046-2512/Analysis'
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
 
     if not results_caiman_path:
@@ -64,8 +66,8 @@ for folder in FOLDERS:
         ## CAIMAN parameters
         # dataset dependent parameters
         #fr = 1/0.758758526502838
-        fr = sampling_rate          # imaging rate in frames per second (data obtained from file ....)
-        decay_time = 0.65           # length of a typical transient in seconds (this is the value given by Marco Brondi, which is different from the one in the original notebook)
+        fr = 1/0.330501113982675#14.913#sampling_rate          # imaging rate in frames per second (data obtained from file ....)
+        decay_time = 0.64#0.65           # length of a typical transient in seconds (this is the value given by Marco Brondi, which is different from the one in the original notebook)
 
         # motion correction parameters
         strides = (48, 48)          # start a new patch for pw-rigid motion correction every x pixels
@@ -123,13 +125,26 @@ for folder in FOLDERS:
         if not fname_new:
             #do mmaping
             ut.caiman_motion_correct(fnames,opts)
-
         #do the caiman analysis and save results
         try:
-            ut.seeded_Caiman_wAgonia(data_path,opts,agonia_th)
+            ut.seeded_Caiman_wAgonia(data_path,opts,agonia_th=agonia_th=)
         except:
             print('unknown error')
+#############################################################3
+data_path = '/home/pedro/Work/Hippocampus/1photon/downsampled'
+data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
 
+ut.agonia_detect(data_path,data_name,median_projection,multiplier=1)
+cnm,cnm2 = ut.run_caiman_pipeline(data_path,opts,refit=True,component_evaluation=True)
+
+cnm.estimates.nb_view_components(img=median_projection,denoised_color='red')
+cnm2.estimates.nb_view_components(img=median_projection,denoised_color='red')
+cnm2.save(os.path.join(data_path,os.path.splitext(data_name[0])[0] + '_analysis_results_Caiman_refit.hdf5'))
+
+ut.plot_AGonia_boxes(data_path,agonia_th=.3)
+cnm = cnmf.load_CNMF(results_caiman_path)
+cnm.estimates.C.shape
+boxes.shape
 ########## correlation between Caiman factors and mean of Agonia boxes##########
 M = np.zeros(len(FOLDERS))
 MA = np.zeros(len(FOLDERS))
@@ -190,8 +205,9 @@ for factor in cnm.estimates.A.T:
     dot = center_of_mass(factor.toarray().reshape(cnm.estimates.dims,order='F'))
     plt.plot(dot[1],dot[0],'.',color='yellow')
 plt. tight_layout()
+np.linspace(0,2,3)
 
-################Save median projection with agonia boxes on top#################
+|################Save median projection with agonia boxes on top#################
 for folder in FOLDERS:
     print('Analyzing folder {}'.format(folder))
     if folder in Mesoscopio_names:
@@ -229,7 +245,7 @@ for folder in FOLDERS:
         plt. tight_layout()
         plt.savefig(os.path.join(save_path,os.path.splitext(data_name[0])[0]+'_agonia_boxes.png'))
 
-
+cnm.estimates.nb_view_components(img=median_projection,denoised_color='red')
 ################################################################################
 data_path = os.path.join(PATH,'2414')
 data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
@@ -323,3 +339,12 @@ cnm.estimates.C.shape
 
 f, ax = plt.subplots()
 ax.plot(cnm.estimates.C[10])
+
+
+4474/14.913
+9975/4474
+9975/300.06
+9975/14.913/2
+
+
+8948/4474

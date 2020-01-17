@@ -1,0 +1,227 @@
+import os
+import time
+import pickle
+import warnings
+import scipy.stats
+import numpy as np
+import pandas as pd
+import caiman as cm
+import holoviews as hv
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+from scipy.ndimage.measurements import center_of_mass
+from caiman.source_extraction.cnmf import cnmf as cnmf
+from caiman.source_extraction.cnmf import params as params
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore",category=FutureWarning)
+    warnings.filterwarnings("ignore",category=DeprecationWarning)
+    warnings.filterwarnings("ignore",category=FutureWarning)
+    import utilsss as ut
+hv.extension('matplotlib')
+
+data_path = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/L4'
+data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
+
+
+## params
+fr = 1.5                    # imaging rate in frames per second (data obtained from file ....)
+decay_time = 0.65           # length of a typical transient in seconds (this is the value given by Marco Brondi, which is different from the one in the original notebook)
+
+# motion correction parameters
+strides = (48, 48)          # start a new patch for pw-rigid motion correction every x pixels
+overlaps = (24, 24)         # overlap between patches (size of patch strides+overlaps)
+max_shifts = (6,6)          # maximum allowed rigid shifts (in pixels)
+max_deviation_rigid = 3     # maximum shifts deviation allowed for patch with respect to rigid shifts
+pw_rigid = True             # flag for performing non-rigid motion correction
+
+# parameters for source extraction and deconvolution
+p = 0                       # order of the autoregressive system
+gnb = 2                     # number of global background components
+merge_thr = 1#0.85            # merging threshold, max correlation allowed
+rf = None#24                     # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
+stride_cnmf = 15            # amount of overlap between the patches in pixels
+K = 4                       # number of components per patch
+gSig = (8,8)                # expected half size of neurons in pixels
+method_init = 'greedy_roi'  # initialization method (if analyzing dendritic data using 'sparse_nmf')
+ssub = 1                    # spatial subsampling during initialization
+tsub = 1                    # temporal subsampling during intialization
+
+# parameters for component evaluation
+min_SNR = 2.0               # signal to noise ratio for accepting a component
+rval_thr = 0.85             # space correlation threshold for accepting a component
+cnn_thr = 0.99              # threshold for CNN based classifier
+cnn_lowest = 0.1            # neurons with cnn probability lower than this value are rejected
+
+opts_dict = {'fnames': fnames,
+'fr': fr,
+'decay_time': decay_time,
+'strides': strides,
+'overlaps': overlaps,
+'max_shifts': max_shifts,
+'max_deviation_rigid': max_deviation_rigid,
+'pw_rigid': pw_rigid,
+'p': p,
+'nb': gnb,
+'rf': rf,
+'K': K,
+'stride': stride_cnmf,
+'method_init': method_init,
+'rolling_sum': True,
+'only_init': False,
+'gSig': gSig,
+'ssub': ssub,
+'tsub': tsub,
+'merge_thr': merge_thr,
+'min_SNR': min_SNR,
+'rval_thr': rval_thr,
+'use_cnn': True,
+'min_cnn_thr': cnn_thr,
+'cnn_lowest': cnn_lowest}
+
+opts = params.CNMFParams(params_dict=opts_dict)
+
+# data preparation
+ut.caiman_motion_correct(fnames,opts)
+
+
+# run AGOnIA
+if not boxes_path:
+    ## detect with AGOnIA
+    ut.agonia_detect(data_path,data_name,median_projection,multiplier=1)
+
+# run seeded-CaImAn
+ut.seeded_Caiman_wAgonia(data_path,opts,agonia_th=.2)
+seeded = cnmf.load_CNMF(results_caiman_path)
+seeded.estimates.nb_view_components(img=median_projection,denoised_color='red')
+
+# run CaImAn
+opts_dict['only_init']=True
+opts_dict['rf'] = 24
+opts = params.CNMFParams(params_dict=opts_dict)
+
+cnm,cnm2 = ut.run_caiman_pipeline(data_path,opts,refit=True,component_evaluation=True,fr=fr,rf=rf,decay_time=decay_time)
+cnm.estimates.nb_view_components(img=median_projection, denoised_color='red')
+
+
+# correlations
+corr_active0, idx_active0, boxes_traces_active = ut.trace_correlation(data_path,
+agonia_th=.2,select_cells=False,plot_results=True)
+
+plt.hist(corr_active0)
+plt.hist(corr_active0[idx_active0])
+# numer of mergings
+
+# performance
+
+
+
+plt.figure(figsize=(15,4))
+plt.plot(seeded.estimates.YrA[3]+seeded.estimates.C[3])
+plt.plot(seeded.estimates.C[3])
+
+plt.figure(figsize=(15,4))
+plt.plot(boxes_traces_active.mean(axis=0))
+plt.plot(boxes_traces_active[3])
+
+corr_boxes = np.corrcoef(boxes_traces_active)
+plt.imshow(corr_boxes)
+corr_denoised = np.corrcoef(seeded.estimates.C)
+plt.imshow(corr_denoised)
+
+corrs_comp = np.empty((boxes_traces_active.shape[0],boxes_traces_active.shape[0]))
+for i,box in enumerate(boxes_traces_active):
+    for j,c in enumerate(seeded.estimates.C):
+        corrs_comp[i,j] = np.corrcoef([box,c])[1,0]
+plt.imshow(corrs_comp)
+
+
+
+plt.scatter(range(len(boxes_traces_active)),np.diag(corrs_comp))
+
+
+
+
+plt.imshow(images.mean(axis=0))
+
+#subtract neuropil
+
+Yr, dims, T = cm.load_memmap(fname_new)
+images = np.reshape(Yr.T, [T] + list(dims), order='F')
+with open(boxes_path,'rb') as f:
+    boxes = pickle.load(f)
+    f.close()
+# keep only cells above confidence threshold
+boxes = boxes[boxes[:,4]>.2].astype('int')
+boxes_traces = np.empty((boxes.shape[0],images.shape[0]))
+neurona = 3
+for cell,box in enumerate(boxes):
+    boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))
+med = np.median(images[:,boxes[neurona,1]:boxes[neurona,3],boxes[neurona,0]:boxes[neurona,2]],axis=0)
+cell = images[:,boxes[neurona,1]:boxes[neurona,3],boxes[neurona,0]:boxes[neurona,2]]
+cell_top80 = cell[:,med>np.percentile(med,80)].mean(axis=1)
+plt.figure(figsize=(16,4))
+plt.plot(cell_top80)
+plt.plot(cell.mean(axis=(1,2)))
+
+mask = np.zeros(images.shape[1:],dtype=bool)
+for i,box in enumerate(boxes):
+    #note that the coordinates of the boxes are transpose with respect to Caiman objects
+    mask[box[1].astype('int'):box[3].astype('int'),box[0].astype('int'):box[2].astype('int')]=1
+mask = (1-mask).astype('bool')
+not_cell = images[:,mask]
+not_cell_med = np.median(not_cell,axis=0)
+neuropil_trace = not_cell[:,not_cell_med<np.percentile(not_cell_med,100)].mean(axis=1)
+plt.figure(figsize=(16,4))
+plt.plot(neuropil_trace)
+
+plt.figure(figsize=(16,4))
+plt.plot(cell_top80-neuropil_trace)
+
+plt.figure(figsize=(16,4))
+plt.plot(cell_top80)
+plt.plot((neuropil_trace-np.mean(neuropil_trace))+np.mean(cell_top80))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#

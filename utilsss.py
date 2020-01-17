@@ -3,6 +3,7 @@ os.chdir('/home/pedro/keras-retinanet')
 import pickle
 import warnings
 import numpy as np
+import pandas as pd
 import caiman as cm
 import holoviews as hv
 from AGOnIA import AGOnIA
@@ -246,7 +247,7 @@ def run_caiman_pipeline(data_path,opts,refit=False,component_evaluation=False,fr
 
     if component_evaluation:
         cnm2.estimates.evaluate_components(images, cnm2.params, dview=dview)
-        cnm2.estimates.select_components(use_object=True)
+        #cnm2.estimates.select_components(use_object=True)
 
     if 'dview' in locals():
         cm.stop_server(dview=dview)
@@ -356,7 +357,10 @@ def plot_seeded_traces(data_path,cnm,Score,x,y,centers):
                                 (boxes[box_idx,2]-boxes[box_idx,0])/2]-c) for c in centers[idx_factor]])]]
 
     caiman_df_f = cnm.estimates.F_dff[idx_factor[0]]
-    return hv.Curve((np.linspace(0,len(caiman_df_f)-1,len(caiman_df_f)),caiman_df_f),'Frame','DF/F CaImAn')
+    denoised_trace = np.max(caiman_df_f)*(cnm.estimates.C[idx_factor[0]]-(np.min(cnm.estimates.C[idx_factor[0]])
+                    +np.mean(caiman_df_f)))/(np.max(cnm.estimates.C[idx_factor[0]])-np.min(cnm.estimates.C[idx_factor[0]]))
+    #return hv.Curve((np.linspace(0,len(caiman_df_f)-1,len(caiman_df_f)),caiman_df_f),'Frame','DF/F CaImAn')*hv.Curve(denoised_trace)
+    return hv.Curve((np.linspace(0,len(caiman_df_f)-1,len(caiman_df_f)),cnm.estimates.C[idx_factor[0]]),'Frame','Denoised')
 
 def boxes_exploration(data_path):
     '''Returns an interactive plot with the agonia boxes with a confidence value above
@@ -399,12 +403,52 @@ def boxes_exploration_interactive(data_path):
     dmap2 = hv.DynamicMap(plot_seeded_traces,kdims=kdims,streams=[CaImAn_detection(), Experiment(),tap,Centers()])
     return ((img*dmap).opts(width=500,height=500)+dmap1.opts(width=500,height=250)+dmap2.opts(width=500,height=250)).opts(opts.Curve(framewise=True)).cols(1)
 
+def read_dlc_results(dlc_results_path):
+    result = pd.read_hdf(dlc_results_path)
+    scorer = result.columns.get_level_values(0)[0]
+    return result[scorer]
 
+def memmap_movie(fnames,dview,load=True):
+    '''memmap already motion corrected movie using caiman functions.
+       if load return the memmap shaped ready to fit caiman (using cnm.fit(images))'''
+    fname_new = cm.save_memmap(fnames, base_name='memmap_', order='C',
+                           border_to_0=0, dview=dview) # exclude borders
+    if load:
+        Yr, dims, T = cm.load_memmap(fname_new)
+        images = np.reshape(Yr.T, [T] + list(dims), order='F')
+        return images
 
+def substract_neuropil(data_path,agonia_th,neuropil_pctl,signal_pctl):
+    ''''''
+    data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
+    Yr, dims, T = cm.load_memmap(fname_new)
+    images = np.reshape(Yr.T, [T] + list(dims), order='F')
 
+    with open(boxes_path,'rb') as f:
+        boxes = pickle.load(f)
+        f.close()
+    # keep only cells above confidence threshold
+    boxes = boxes[boxes[:,4]>agonia_th].astype('int')
+    boxes_traces = np.empty((boxes.shape[0],images.shape[0]))
 
+    for cell,box in enumerate(boxes):
+        boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))
 
+    med = np.median(images[:,boxes[neurona,1]:boxes[neurona,3],boxes[neurona,0]:boxes[neurona,2]],axis=0)
+    cell = images[:,boxes[neurona,1]:boxes[neurona,3],boxes[neurona,0]:boxes[neurona,2]]
+    cell_top80 = cell[:,med>np.percentile(med,80)].mean(axis=1)
+    plt.figure(figsize=(16,4))
+    plt.plot(cell_top80)
+    plt.plot(cell.mean(axis=(1,2)))
 
+    mask = np.zeros(images.shape[1:],dtype=bool)
+    for i,box in enumerate(boxes):
+        #note that the coordinates of the boxes are transpose with respect to Caiman objects
+        mask[box[1].astype('int'):box[3].astype('int'),box[0].astype('int'):box[2].astype('int')]=1
+    mask = (1-mask).astype('bool')
+    not_cell = images[:,mask]
+    not_cell_med = np.median(not_cell,axis=0)
+    neuropil_trace = not_cell[:,not_cell_med<np.percentile(not_cell_med,100)].mean(axis=1)
 
 
 
