@@ -1,0 +1,138 @@
+import os
+import time
+import pickle
+import warnings
+import scipy.stats
+import numpy as np
+import pandas as pd
+import caiman as cm
+import seaborn as sns
+import holoviews as hv
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+from scipy.ndimage.measurements import center_of_mass
+from caiman.source_extraction.cnmf import cnmf as cnmf
+from caiman.source_extraction.cnmf import params as params
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore",category=FutureWarning)
+    warnings.filterwarnings("ignore",category=DeprecationWarning)
+    warnings.filterwarnings("ignore",category=FutureWarning)
+    import utilsss as ut
+hv.extension('matplotlib')
+
+data_path = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/prueba'
+data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
+
+## params for CaImAn
+fr = 3.026                    # imaging rate in frames per second (data obtained from file ....)
+decay_time = 0.64           # length of a typical transient in seconds (this is the value given by Marco Brondi, which is different from the one in the original notebook)
+
+# motion correction parameters
+strides = (48, 48)          # start a new patch for pw-rigid motion correction every x pixels
+overlaps = (24, 24)         # overlap between patches (size of patch strides+overlaps)
+max_shifts = (6,6)          # maximum allowed rigid shifts (in pixels)
+max_deviation_rigid = 3     # maximum shifts deviation allowed for patch with respect to rigid shifts
+pw_rigid = True             # flag for performing non-rigid motion correction
+
+# parameters for source extraction and deconvolution
+p = 0                       # order of the autoregressive system
+gnb = 2                     # number of global background components
+merge_thr = 1               # merging threshold, max correlation allowed
+rf = None                   # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
+stride_cnmf = 15            # amount of overlap between the patches in pixels
+K = 4                       # number of components per patch
+gSig = (7,7)                # expected half size of neurons in pixels
+method_init = 'greedy_roi'  # initialization method (if analyzing dendritic data using 'sparse_nmf')
+ssub = 1                    # spatial subsampling during initialization
+tsub = 1                    # temporal subsampling during intialization
+
+# parameters for component evaluation
+min_SNR = 2.0               # signal to noise ratio for accepting a component
+rval_thr = 0.85             # space correlation threshold for accepting a component
+cnn_thr = 0.99              # threshold for CNN based classifier
+cnn_lowest = 0.1            # neurons with cnn probability lower than this value are rejected
+
+opts_dict = {'fnames': fnames,
+'fr': fr,
+'decay_time': decay_time,
+'strides': strides,
+'overlaps': overlaps,
+'max_shifts': max_shifts,
+'max_deviation_rigid': max_deviation_rigid,
+'pw_rigid': pw_rigid,
+'p': p,
+'nb': gnb,
+'rf': rf,
+'K': K,
+'stride': stride_cnmf,
+'method_init': method_init,
+'rolling_sum': True,
+'only_init': False,
+'gSig': gSig,
+'ssub': ssub,
+'tsub': tsub,
+'merge_thr': merge_thr,
+'min_SNR': min_SNR,
+'rval_thr': rval_thr,
+'use_cnn': True,
+'min_cnn_thr': cnn_thr,
+'cnn_lowest': cnn_lowest}
+
+opts = params.CNMFParams(params_dict=opts_dict)
+
+if not boxes_path:
+    ## detect with AGOnIA
+    ut.agonia_detect(data_path,data_name,median_projection,multiplier=1)
+
+if not fname_new:
+    #do mmaping
+    ut.caiman_motion_correct(fnames,opts)
+
+#if motion corrected is already done with another algorithm
+ut.memmap_movie(fnames,load=False)
+
+#run seeded agonia
+ut.seeded_Caiman_wAgonia(data_path,opts,agonia_th=.2)
+
+#load results and plot components
+data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
+
+seeded = cnmf.load_CNMF(results_caiman_path)
+seeded.estimates.nb_view_components(img=median_projection,denoised_color='red')
+
+#to visualize factors and boxes use the notebook /home/pedro/Work/AGOnIA/code/detection_plots.ipynb
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#

@@ -1,0 +1,120 @@
+#python implementation of moco
+import numpy as np
+import matplotlib.pyplot as plt
+from time import time
+frame1 = np.random.rand(256,256)
+ref = np.random.rand(256,256)
+plt.imshow(ref)
+
+#parameters
+w = 10 #max absolute value of shifts
+S = np.linspace(-w,w,2*w+1).astype(int)
+T = np.linspace(-w,w,2*w+1).astype(int)
+
+
+
+t0 = time()
+g = np.empty([w*2+1,w*2+1])
+frame_shape = ref.shape
+#calculate first g shifts=(-w,-w)
+
+#option 1: calculate first row and column
+g[0,0] = np.sum(frame1[:frame_shape[0]+S[0],:frame_shape[1]+T[0]]**2)
+for i,s in enumerate(S[1:w+1]):
+    g[i+1,0]  = np.sum(frame1[:frame_shape[0]+s,:frame_shape[1]+T[0]]**2)
+for j,t in enumerate(T[1:w+1]):
+    g[0,j+1]  = np.sum(frame1[:frame_shape[0]+S[0],:frame_shape[1]+t]**2)
+
+for i,s in enumerate(S[1:w+1]):
+    for j,t in enumerate(T[1:w+1]):
+        g[i+1,j+1] = g[i,j+1] + g[i+1,j] - g[i,j]+ frame1[frame_shape[0]-1+s,frame_shape[1]-1+t]**2
+time()-t0
+
+t0 = time()
+g = np.empty([w*2+1,w*2+1])
+g = np.zeros([w*2+1,w*2+1])
+frame_shape = ref.shape
+#calculate first g shifts=(-w,-w)
+
+#option 2:iterate first row and column
+#negative shifts
+g[0,0] = np.sum(frame1[:frame_shape[0]+S[0],:frame_shape[1]+T[0]]**2)
+for i,s in enumerate(S[1:w+1]):
+    g[i+1,0]  = g[i,0] + np.sum(frame1[frame_shape[0]-1+s,:frame_shape[1]+T[0]]**2)
+for j,t in enumerate(T[1:w+1]):
+    g[0,j+1]  = g[0,j] + np.sum(frame1[:frame_shape[0]+S[0],frame_shape[1]-1+t]**2)
+
+for i,s in enumerate(S[1:w+1]):
+    for j,t in enumerate(T[1:w+1]):
+        g[i+1,j+1] = g[i,j+1] + g[i+1,j] - g[i,j]+ frame1[frame_shape[0]-1+s,frame_shape[1]-1+t]**2
+
+#postive shifts (esto esta mal, hay que empezar del otro lado osea desde el shift mas grande para atras)
+for i,s in enumerate(S[w+1:]):
+    g[w+1+i,w]  = g[w+i,w] - np.sum(frame1[s-1,:]**2)
+for j,t in enumerate(T[w+1:]):
+    g[w,j+w+1]  = g[w,j+w] - np.sum(frame1[:,t-1]**2)
+
+for i,s in enumerate(S[w+1:]):
+    for j,t in enumerate(T[w+1:]):
+        g[w+i+1,w+j+1] = g[w+i,w+j+1] + g[w+i+1,w+j] - g[w+i,w+j]+ frame1[s,t]**2
+
+time()-t0
+
+g[10,10]-np.sum(frame1**2)
+T[10]
+np.sum(frame1[:frame_shape[0]+S[1],:frame_shape[1]+T[0]]**2)
+
+np.sum(frame1[:2,:2]**2),g[0,0],S[0],T[0]
+np.sum(frame1[:2,:3]**2),g[0,1],S[0],T[1]
+g0[0,0]+np.sum(frame1[:2,2]**2),g0[0,1]
+
+T[1:w+1]
+
+g[:,11]
+
+plt.imshow(g)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#

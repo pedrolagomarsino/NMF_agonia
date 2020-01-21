@@ -408,15 +408,22 @@ def read_dlc_results(dlc_results_path):
     scorer = result.columns.get_level_values(0)[0]
     return result[scorer]
 
-def memmap_movie(fnames,dview,load=True):
+def memmap_movie(fnames,load=True):
     '''memmap already motion corrected movie using caiman functions.
        if load return the memmap shaped ready to fit caiman (using cnm.fit(images))'''
+    if 'dview' in locals():
+        cm.stop_server(dview=dview)
+    c, dview, n_processes = cm.cluster.setup_cluster(
+    backend='local', n_processes=None, single_thread=False)
+
     fname_new = cm.save_memmap(fnames, base_name='memmap_', order='C',
                            border_to_0=0, dview=dview) # exclude borders
+    cm.stop_server(dview=dview)
     if load:
         Yr, dims, T = cm.load_memmap(fname_new)
         images = np.reshape(Yr.T, [T] + list(dims), order='F')
         return images
+
 
 def substract_neuropil(data_path,agonia_th,neuropil_pctl,signal_pctl):
     ''''''
@@ -430,27 +437,21 @@ def substract_neuropil(data_path,agonia_th,neuropil_pctl,signal_pctl):
     # keep only cells above confidence threshold
     boxes = boxes[boxes[:,4]>agonia_th].astype('int')
     boxes_traces = np.empty((boxes.shape[0],images.shape[0]))
+    mask = np.zeros(images.shape[1:],dtype=bool)
 
     for cell,box in enumerate(boxes):
-        boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))
-
-    med = np.median(images[:,boxes[neurona,1]:boxes[neurona,3],boxes[neurona,0]:boxes[neurona,2]],axis=0)
-    cell = images[:,boxes[neurona,1]:boxes[neurona,3],boxes[neurona,0]:boxes[neurona,2]]
-    cell_top80 = cell[:,med>np.percentile(med,80)].mean(axis=1)
-    plt.figure(figsize=(16,4))
-    plt.plot(cell_top80)
-    plt.plot(cell.mean(axis=(1,2)))
-
-    mask = np.zeros(images.shape[1:],dtype=bool)
-    for i,box in enumerate(boxes):
-        #note that the coordinates of the boxes are transpose with respect to Caiman objects
+        #boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))
+        med = np.median(images[:,box[1]:box[3],box[0]:box[2]],axis=0)
+        box_trace = images[:,box[1]:box[3],box[0]:box[2]]
+        boxes_traces[cell] = box_trace[:,med>np.percentile(med,signal_pctl)].mean(axis=1)
         mask[box[1].astype('int'):box[3].astype('int'),box[0].astype('int'):box[2].astype('int')]=1
+
     mask = (1-mask).astype('bool')
     not_cell = images[:,mask]
     not_cell_med = np.median(not_cell,axis=0)
-    neuropil_trace = not_cell[:,not_cell_med<np.percentile(not_cell_med,100)].mean(axis=1)
-
-
+    neuropil_trace = not_cell[:,not_cell_med<np.percentile(not_cell_med,neuropil_pctl)].mean(axis=1)
+    denoised_traces = boxes_traces-neuropil_trace
+    return denoised_traces
 
 
 

@@ -11,25 +11,26 @@ det = AGOnIA('L4+CA1_800.h5',True)
 
 #load data
 median_path = '/home/pedro/Work/AGOnIA/Boxes-data/Seeded-Caiman/croped/MED_501271265_5000_crop.jpg'
-max_path = '/home/pedro/Work/AGOnIA/Boxes-data/Seeded-Caiman/501271265_max.jpg'
+#max_path = '/home/pedro/Work/AGOnIA/Boxes-data/Seeded-Caiman/501271265_max.jpg' #this is the max of the very very long video
+max_path = '/home/pedro/Work/AGOnIA/Boxes-data/Seeded-Caiman/MAX_501271265_5000.jpg' #this is the path on the max over 5000 frames
 
 median_projection = plt.imread(median_path)
 median_projection = np.array(median_projection,dtype='uint16')*255 # uint16 goes to 255*255
 
 max_projection = plt.imread(max_path)
-max_projection = np.array(max_projection,dtype='uint8') # uint16 goes to 255*255
+max_projection = np.array(max_projection,dtype='uint16')*255 # uint16 goes to 255*255
 
 max_projection.dtype
 max_projection.shape
 # detect rois in median projection of the motion corrected movie
-#ROIs = det.detect(median_projection,threshold=0.01,multiplier=2.1)
-ROIs = det.detect(max_projection,threshold=0.01,multiplier=2)
+ROIs = det.detect(median_projection,threshold=0.01,multiplier=2)
+#ROIs = det.detect(max_projection,threshold=0.01,multiplier=2)
 ROIs.shape
 
 # plot Boxes on top of median
 fig,ax = plt.subplots(figsize=(24,12))
-#ax.imshow(median_projection)
-ax.imshow(max_projection)
+ax.imshow(median_projection)
+#ax.imshow(max_projection)
 for i in range(ROIs.shape[0]):
     rect = Rectangle((ROIs[i,0],ROIs[i,1]), ROIs[i,2]-ROIs[i,0],
           ROIs[i,3]-ROIs[i,1],color='r',fill=False)
