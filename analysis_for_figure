@@ -9,6 +9,7 @@ import caiman as cm
 import seaborn as sns
 import holoviews as hv
 import matplotlib.pyplot as plt
+from scipy.stats import ttest_ind
 from matplotlib.patches import Rectangle
 from scipy.ndimage.measurements import center_of_mass
 from caiman.source_extraction.cnmf import cnmf as cnmf
@@ -23,9 +24,8 @@ hv.extension('matplotlib')
 data_path = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/L4'
 data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
 
-
 ## params
-fr = 1.5                    # imaging rate in frames per second (data obtained from file ....)
+fr = 30                    # imaging rate in frames per second (data obtained from file ....)
 decay_time = 0.65           # length of a typical transient in seconds (this is the value given by Marco Brondi, which is different from the one in the original notebook)
 
 # motion correction parameters
@@ -84,14 +84,15 @@ opts = params.CNMFParams(params_dict=opts_dict)
 # data preparation
 ut.caiman_motion_correct(fnames,opts)
 
-
 # run AGOnIA
 if not boxes_path:
     ## detect with AGOnIA
-    ut.agonia_detect(data_path,data_name,median_projection,multiplier=1)
+    ut.agonia_detect(data_path,data_name,median_projection,multiplier=2.3)
 
 # run seeded-CaImAn
-ut.seeded_Caiman_wAgonia(data_path,opts,agonia_th=.2)
+agonia_th = .2
+ut.seeded_Caiman_wAgonia(data_path,opts,agonia_th=agonia_th)
+data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
 seeded = cnmf.load_CNMF(results_caiman_path)
 seeded.estimates.nb_view_components(img=median_projection,denoised_color='red')
 
@@ -104,76 +105,77 @@ opts = params.CNMFParams(params_dict=opts_dict)
 cnm,cnm2 = ut.run_caiman_pipeline(data_path,opts,refit=True,component_evaluation=True,fr=fr,rf=rf,decay_time=decay_time)
 cnm.estimates.nb_view_components(img=median_projection, denoised_color='red')
 
-
 # correlations
 
 ## substract neuropil out of the mean of the boxes
-denoised_traces_100 = ut.substract_neuropil(data_path,agonia_th=.2,neuropil_pctl=100,signal_pctl=80)
+denoised_traces, neuropil_trace = ut.substract_neuropil(data_path,agonia_th=agonia_th,neuropil_pctl=100,signal_pctl=80)
 
 ## calcular las correlaciones entre las medias de la box y los factores de caiman, usando el criterio de actividad de caiman
-corr_active, idx_active, boxes_traces = ut.trace_correlation(data_path,
-agonia_th=.2,select_cells=False,plot_results=False)
+corr_comp, idx_active, boxes_traces = ut.trace_correlation(data_path,
+agonia_th=agonia_th,select_cells=False,plot_results=False)
 
+corrs_comp_denoised, idx_active, boxes_traces_denoised = ut.trace_correlation(data_path,
+agonia_th=agonia_th,select_cells=False,plot_results=False,denoise=True)
 
 corr_boxes = np.corrcoef(boxes_traces)
 corr_caiman = np.corrcoef(seeded.estimates.C)
-corrs_comp = np.empty((denoised_traces.shape[0],denoised_traces.shape[0]))
-for i,box in enumerate(denoised_traces):
-    for j,c in enumerate(seeded.estimates.C):
-        corrs_comp[i,j] = np.corrcoef([box,c])[1,0]
+#corrs_comp_denoised = np.empty((denoised_traces.shape[0],denoised_traces.shape[0]))
+#for i,box in enumerate(denoised_traces):
+#    for j,c in enumerate(seeded.estimates.C):
+#        corrs_comp_denoised[i,j] = np.corrcoef([box,c])[1,0]
 corr_denoised = np.corrcoef(denoised_traces)
 
-plt.figure(figsize=(16,16))
-plt.subplot(221)
-plt.title('Mean of boxes')
+plt.figure(figsize=(30,10))
+plt.subplot(131)
+plt.title('Mean of boxes',fontsize=30)
+plt.tick_params(labelsize=20)
 plt.imshow(corr_boxes)
-plt.subplot(222)
-plt.title('Caiman denoised')
+plt.subplot(132)
+plt.title('Caiman denoised',fontsize=30)
+plt.tick_params(labelsize=20)
 plt.imshow(corr_caiman)
-plt.subplot(223)
-plt.title('Neuropil substracted')
+plt.subplot(133)
+plt.title('Neuropil substracted',fontsize=30)
+plt.tick_params(labelsize=20)
 plt.imshow(corr_denoised)
-plt.subplot(224)
-plt.title('Manual vs CaImAn denoising')
-plt.imshow(corrs_comp)
+#plt.subplot(134)
+#plt.title('Manual vs CaImAn denoising')
+#plt.imshow(corrs_comp_denoised)
+plt.savefig(os.path.join(data_path,'correlation_matrices'),format='pdf')
 plt.show()
-
-plt.boxplot(np.diag(corrs_comp))
+fig,ax = plt.subplots(figsize=(5,5))
+plt.title('MedianVsCaiman Correlations',fontsize=15)
+plt.boxplot([corr_comp,corrs_comp_denoised])
+ax.set_xticklabels(['median','neuropil_subtracted'])
 plt.ylim([0,1])
+plt.savefig(os.path.join(data_path,'correlation_median_or_denoisedvsCaiman'),format='pdf')
 plt.show()
+ttest_ind(corr_comp,corrs_comp_denoised,equal_var=False)
 
-np.std(np.diag(corrs_comp))
+#values1, base1 = np.histogram(np.diag(corrs_comp_denoised),bins=20)
+values1, base1 = np.histogram(corrs_comp_denoised,bins=20)
+cumulative_denoised = np.cumsum(values1)
+values, base = np.histogram(corr_comp,bins=20)
+cumulative = np.cumsum(values)
+plt.plot(base1[:-1], cumulative_denoised, c='blue')
+plt.plot(base[:-1], cumulative, c='green')
+
+
 
 clust_boxes = sns.clustermap(corr_boxes, method='average', metric='euclidean', figsize=(20,20), cmap=plt.cm.viridis, vmin=-1, vmax=1)
+plt.savefig(os.path.join(data_path,'Dendrogram_meanboxes'),format='pdf')
+
 
 clust_caiman = sns.clustermap(corr_caiman, method='average', metric='euclidean', figsize=(20,20), cmap=plt.cm.viridis, vmin=-1, vmax=1)
+plt.savefig(os.path.join(data_path,'Dendrogram_caimanfactors'),format='pdf')
+
 
 clust_caiman.dendrogram_row.dendrogram['leaves'][76]
 
 clust_denoised = sns.clustermap(corr_denoised, method='average', metric='euclidean', figsize=(20,20), cmap=plt.cm.viridis, vmin=-1, vmax=1)
+plt.savefig(os.path.join(data_path,'Dendrogram_meanboxes_denoised'),format='pdf')
 
 
-clust_denoised.dendrogram_col.dendrogram.keys()
-clust_denoised.dendrogram_col.dendrogram['icoord'][-1]
-a = clust_denoised.dendrogram_col.dendrogram['dcoord'][-1]
-L = a[1]-a[0]
-R = a[2]-a[3]
-L,R
-clust_denoised.dendrogram_row.dendrogram['leaves']
-np.shape(clust_denoised.dendrogram_row.dendrogram['icoord'])
-
-np.shape(clust_denoised.dendrogram_col.dendrogram['leaves'][17:113])
-clust_denoised.dendrogram_col.dendrogram['leaves'].index(97)
-
-clust_caiman.dendrogram_col.dendrogram['leaves']
-clust_caiman.dendrogram_col.dendrogram['leaves'].index(111)
-
-p=0
-for cai in clust_caiman.dendrogram_col.dendrogram['leaves'][:77]:
-    if clust_denoised.dendrogram_col.dendrogram['leaves'].index(cai)<117 and clust_denoised.dendrogram_col.dendrogram['leaves'].index(cai)>17:
-        p+=1
-p=p/len(clust_caiman.dendrogram_col.dendrogram['leaves'][:77])
-p
 # numer of mergings
 
 # performance
@@ -181,13 +183,110 @@ p
 #usar pca para ver si esta el neuropilo y ver los pesos sobre cada neurona.
 
 
+# event detection by Luca
+from scipy.signal import butter,filtfilt,savgol_filter, find_peaks
+def butter_lowpass_filter(data, cutoff, fs, order):
+    normal_cutoff = cutoff / (0.5*fs)
+    # Get the filter coefficients
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    y = filtfilt(b, a, data)
+    return y
+#data=ext.data[1:,1:].T
+data = seeded.estimates.C
+data = denoised_traces
+#data now is the traces array shaped (id,frame)
+for t in data[1:2,:]:
+    x=np.arange(len(t))
+    plt.plot(x,t)
+    # here I'm filtering for nans that i get from the trace extractor as invalid value
+    fil=np.where(np.isfinite(t))
+    sav=savgol_filter(t[fil], 15, 3,1)
+    plt.plot(x[fil], sav)
+    but=butter_lowpass_filter(sav, 1, 3, 3)
+    plt.plot(x[fil],but)
+    peaks,_ =find_peaks(but,height=(70,None),prominence=7 )
+    plt.plot(x[fil][peaks], np.zeros_like(x[fil][peaks]),'|r')
+    print(x[fil][peaks])
+    plt.show()
+
+plt.figure(figsize=(16,16))
+plt.subplot(411)
+plt.plot(x,t)
+plt.subplot(412)
+plt.plot(x[fil], sav)
+plt.subplot(413)
+plt.plot(x[fil],but)
+plt.subplot(414)
+plt.plot(x[fil][peaks], np.zeros_like(x[fil][peaks]),'|r')
+##
+
+
+
+ut.event_comparison(seeded.estimates.C,seeded.estimates.C,2)
+
+
+ec_den = ut.event_overlap(seeded.estimates.C,denoised_traces,2)
+
+ec_box = ut.event_overlap(seeded.estimates.C,boxes_traces,2)
+np.argmin(ec_den)
+plt.plot(seeded.estimates.C[40])
+plt.plot(denoised_traces[21])
+
+plt.boxplot(ut.event_overlap(seeded.estimates.C,denoised_traces,1))
+plt.boxplot(ut.event_overlap(seeded.estimates.C,boxes_traces,2))
+
+plt.boxplot(ut.event_periods_correlation(seeded.estimates.C,denoised_traces,1))
+plt.ylim([0,1])
+plt.boxplot(ut.event_periods_correlation(seeded.estimates.C,boxes_traces,1))
+plt.ylim([0,1])
+
+
+trace_1 = ago_denoised[i].copy()
+trace_1 = (trace_1-min(trace_1))/max(trace_1-min(trace_1))
+trace_0 = trace/max(trace)
+
+STD_0 = np.std(trace_0)
+M_0 = trace_0.mean()
+TH_0 = M_0+n_std*STD_0
+#trace_1[trace_0<TH_0]=np.nan
+#trace_0[trace_0<TH_0]=np.nan
+
+events_corr[i] = np.corrcoef([trace_0[trace_0>TH_0],trace_1[trace_0>TH_0]])[1,0]
 
 
 
 
+ut.event_periods_correlation(seeded.estimates.C,denoised_traces,1.5)
+n_std = 1.5
+cell = 46
+trace_1 = denoised_traces[cell].copy()
+trace_1 = (trace_1-min(trace_1))/max(trace_1-min(trace_1))
+trace_0 = seeded.estimates.C[cell]/max(seeded.estimates.C[cell])
+
+STD_0 = np.std(trace_0)
+M_0 = trace_0.mean()
+TH_0 = M_0+n_std*STD_0
+#trace_1[trace_0<TH_0]=np.nan
+#trace_0[trace_0<TH_0]=np.nan
+
+np.corrcoef([trace_0[trace_0>TH_0],trace_1[trace_0>TH_0]])[1,0]
 
 
+plt.plot(trace_0[trace_0>TH_0])
+plt.plot(trace_1[trace_0>TH_0])
 
+plt.plot(trace_1)
+
+
+plt.plot(denoised_traces[cell])
+
+plt.plot(seeded.estimates.C[cell])
+
+pepe = denoised_traces+neuropil_trace
+neuropil_trace_norm = neuropil_trace/np.sqrt((neuropil_trace**2).sum())
+plt.plot(pepe[cell]/np.sqrt((pepe[cell]**2).sum())-neuropil_trace_norm)
+plt.plot(denoised_traces[cell]+neuropil_trace)
+plt.plot(neuropil_trace_norm)#
 
 
 

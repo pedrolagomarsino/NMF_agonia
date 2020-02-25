@@ -1,4 +1,5 @@
 import os
+import sys
 os.chdir('/home/pedro/keras-retinanet')
 import pickle
 import warnings
@@ -140,7 +141,7 @@ def seeded_Caiman_wAgonia(data_path,opts,agonia_th):
 
     cm.stop_server(dview=dview)
 
-def trace_correlation(data_path, agonia_th, select_cells=False,plot_results=True):
+def trace_correlation(data_path, agonia_th, select_cells=False,plot_results=True,denoise=False):
     '''Calculate the correlation between the mean of the Agonia Box and the CaImAn
     factor.
     INPUTS:
@@ -183,9 +184,12 @@ def trace_correlation(data_path, agonia_th, select_cells=False,plot_results=True
     boxes_traces = np.empty((boxes.shape[0],images.shape[0]))
     #calculate correlations between boxes and CaImAn factors
     cell_corr = np.empty(len(boxes_traces))
+    neuropil_trace = np.zeros(T)
+    if denoise:
+        _,neuropil_trace = substract_neuropil(data_path,agonia_th,100,80)
     for cell,box in enumerate(boxes):
         # calculate boxes traces as means over images
-        boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))
+        boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))-neuropil_trace
         # get the asociated CaImAn factor by checking if its center of mass is inside the box
         idx_factor = [i for i,center in enumerate(centers) if center[0]>box[1] and
          center[0]<box[3] and center[1]>box[0] and center[1]<box[2]]
@@ -425,17 +429,33 @@ def memmap_movie(fnames,load=True):
         return images
 
 
-def substract_neuropil(data_path,agonia_th,neuropil_pctl,signal_pctl):
+def substract_neuropil(data_path,agonia_th,neuropil_pctl,signal_pctl,normalize=False):
     ''''''
+
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     Yr, dims, T = cm.load_memmap(fname_new)
     images = np.reshape(Yr.T, [T] + list(dims), order='F')
+    # load Caiman results
+    cnm = cnmf.load_CNMF(results_caiman_path)
+    # calculate the centers of the CaImAn factors
+    centers = np.empty((cnm.estimates.A.shape[1],2))
+    for i,factor in enumerate(cnm.estimates.A.T):
+        centers[i] = center_of_mass(factor.toarray().reshape(cnm.estimates.dims,order='F'))
 
     with open(boxes_path,'rb') as f:
         boxes = pickle.load(f)
         f.close()
     # keep only cells above confidence threshold
     boxes = boxes[boxes[:,4]>agonia_th].astype('int')
+    #delete boxes that do not have a caiman cell inside
+    k = 0
+    for cell,box in enumerate(boxes):
+        idx_factor = [i for i,center in enumerate(centers) if center[0]>box[1] and
+         center[0]<box[3] and center[1]>box[0] and center[1]<box[2]]
+        if not idx_factor:
+            boxes = np.delete(boxes,cell-k,axis=0)
+            k += 1
+
     boxes_traces = np.empty((boxes.shape[0],images.shape[0]))
     mask = np.zeros(images.shape[1:],dtype=bool)
 
@@ -451,7 +471,83 @@ def substract_neuropil(data_path,agonia_th,neuropil_pctl,signal_pctl):
     not_cell_med = np.median(not_cell,axis=0)
     neuropil_trace = not_cell[:,not_cell_med<np.percentile(not_cell_med,neuropil_pctl)].mean(axis=1)
     denoised_traces = boxes_traces-neuropil_trace
-    return denoised_traces
+    return denoised_traces, neuropil_trace
+
+
+def event_overlap(traces_0,traces_1,n_std):
+    '''binzarize traces (events=1 else=0), then check if events in traces_0 are
+    similar to events in traces_1'''
+    if traces_0.shape != traces_1.shape:
+        print('Error: traces must be same length, and same number of factors')
+    else:
+        events_overlap = np.zeros(traces_0.shape[0])
+        for i,trace in enumerate(traces_0):
+            trace_1 = traces_1[i].copy()
+            trace_0 = trace.copy()
+
+            STD_0 = np.std(trace_0)
+            M_0 = trace_0.mean()
+            TH_0 = M_0+n_std*STD_0
+            trace_0[trace_0<TH_0]=0
+            trace_0[trace_0>=TH_0]=1
+
+            STD_1 = np.std(trace_1)
+            M_1 = trace_1.mean()
+            TH_1 = M_1+n_std*STD_1
+            trace_1[trace_1<TH_1]=0
+            trace_1[trace_1>=TH_1]=1
+
+            sum_events = trace_0+trace_1
+            sum_events[sum_events==2]=1
+
+            events_overlap[i] = sum(trace_0*trace_1)/sum(sum_events)
+
+        return events_overlap
+
+
+def event_periods_correlation(caiman_trace,ago_denoised,n_std):
+    '''select only event periods and correlate traces denoised with different methods'''
+    if caiman_trace.shape != ago_denoised.shape:
+        print('Error: traces must be same length, and same number of factors')
+    else:
+        events_corr = np.zeros(caiman_trace.shape[0])
+        for i,trace in enumerate(caiman_trace):
+            trace_1 = ago_denoised[i].copy()
+            trace_1 = (trace_1-min(trace_1))/max(trace_1-min(trace_1))
+            trace_0 = trace/max(trace)
+
+            STD_0 = np.std(trace_0)
+            M_0 = trace_0.mean()
+            TH_0 = M_0+n_std*STD_0
+            #trace_1[trace_0<TH_0]=np.nan
+            #trace_0[trace_0<TH_0]=np.nan
+
+            events_corr[i] = np.corrcoef([trace_0[trace_0>TH_0],trace_1[trace_0>TH_0]])[1,0]
+
+    return events_corr
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
