@@ -20,6 +20,8 @@ from caiman.source_extraction.cnmf import cnmf as cnmf
 from caiman.components_evaluation import compute_event_exceptionality
 warnings.filterwarnings("ignore",category=FutureWarning)
 warnings.filterwarnings("ignore",category=DeprecationWarning)
+sys.path.insert(1, '/home/pedro/Work/Hippocampus/code')
+import to_Pedro as sut
 
 def NMF_dec(box, n_components=1,init=None,random_state=None):
     cell=boxes[box]
@@ -536,12 +538,87 @@ def event_periods_correlation(caiman_trace,ago_denoised,n_std):
 
 
 
+def event_periods_correlation_dol(caiman_trace,ago_denoised,start_nSigma_bsl=7,stop_nSigma_bsl=5):
+    '''select only event periods and correlate traces denoised with different methods'''
+    if caiman_trace.shape != ago_denoised.shape:
+        print('Error: traces must be same length, and same number of factors')
+    else:
+        events_corr = np.zeros(caiman_trace.shape[0])
+        for i,trace in enumerate(caiman_trace):
+            (pos_events_trace_C, _, _, _, _, _) = sut.eventFinder(
+            trace = trace, start_nSigma_bsl = start_nSigma_bsl, stop_nSigma_bsl = stop_nSigma_bsl,
+            FPS = 3, minimumDuration = .3, debugPlot = False)
+
+            events_corr[i] = np.corrcoef([trace[pos_events_trace_C!=0],ago_denoised[i,pos_events_trace_C!=0]])[1,0]
+
+    return events_corr
 
 
+def event_overlap_don(caiman_traces,denoised_agonia,start_nSigma_bsl=7,stop_nSigma_bsl=5):
+    '''binzarize traces (events=1 else=0), then check if events in caiman_traces are
+    similar to events in denoised_agonia'''
+    if caiman_traces.shape != denoised_agonia.shape:
+        print('Error: traces must be same length, and same number of factors')
+    else:
+        events_overlap = np.zeros(caiman_traces.shape[0])
+        for i,trace in enumerate(caiman_traces):
+            (pos_events_0, _, _, _, _, _) = sut.eventFinder(
+            trace = trace, start_nSigma_bsl = start_nSigma_bsl, stop_nSigma_bsl = stop_nSigma_bsl,
+            FPS = 3, minimumDuration = .3, debugPlot = False)
+            pos_events_0[pos_events_0!=0]=1
 
+            (pos_events_1, _, _, _, _, _) = sut.eventFinder(
+            trace = denoised_agonia[i]-np.percentile(denoised_agonia[i],10), start_nSigma_bsl = 4, stop_nSigma_bsl = 3,
+            FPS = 3, minimumDuration = .3, debugPlot = False)
+            pos_events_1[pos_events_1!=0]=1
 
+            sum_events = pos_events_0+pos_events_1
+            sum_events[sum_events==2]=1
 
+            events_overlap[i] = sum(pos_events_0*pos_events_1)/sum(sum_events)
 
+        return events_overlap
+
+def localvsglobal_neuropil(data_path,agonia_th):
+    ''''''
+    data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
+    Yr, dims, T = cm.load_memmap(fname_new)
+    images = np.reshape(Yr.T, [T] + list(dims), order='F')
+    # load Caiman results
+    cnm = cnmf.load_CNMF(results_caiman_path)
+    # calculate the centers of the CaImAn factors
+    centers = np.empty((cnm.estimates.A.shape[1],2))
+    for i,factor in enumerate(cnm.estimates.A.T):
+        centers[i] = center_of_mass(factor.toarray().reshape(cnm.estimates.dims,order='F'))
+
+    with open(boxes_path,'rb') as f:
+        boxes = pickle.load(f)
+        f.close()
+    # keep only cells above confidence threshold
+    boxes = boxes[boxes[:,4]>agonia_th].astype('int')
+    #delete boxes that do not have a caiman cell inside
+    k = 0
+    for cell,box in enumerate(boxes):
+        idx_factor = [i for i,center in enumerate(centers) if center[0]>box[1] and
+         center[0]<box[3] and center[1]>box[0] and center[1]<box[2]]
+        if not idx_factor:
+            boxes = np.delete(boxes,cell-k,axis=0)
+            k += 1
+
+    boxes_traces = np.empty((boxes.shape[0],images.shape[0]))
+    mask = np.zeros(images.shape[1:],dtype=bool)
+
+    for cell,box in enumerate(boxes):
+        #boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))
+        med = np.median(images[:,box[1]:box[3],box[0]:box[2]],axis=0)
+        box_trace = images[:,box[1]:box[3],box[0]:box[2]]
+        boxes_traces[cell] = box_trace[:,med>np.percentile(med,signal_pctl)].mean(axis=1)
+        mask[box[1].astype('int'):box[3].astype('int'),box[0].astype('int'):box[2].astype('int')]=1
+
+    mask = (1-mask).astype('bool')
+    not_cell = images[:,mask]
+
+    return
 
 
 
