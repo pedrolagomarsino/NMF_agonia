@@ -189,7 +189,9 @@ def trace_correlation(data_path, agonia_th, select_cells=False,plot_results=True
         _,neuropil_trace = substract_neuropil(data_path,agonia_th,100,80)
     for cell,box in enumerate(boxes):
         # calculate boxes traces as means over images
-        boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))-neuropil_trace
+        #boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))-neuropil_trace
+        boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))
+        boxes_traces[cell] = boxes_traces[cell]-neuropil_trace*boxes_traces[cell].mean()
         # get the asociated CaImAn factor by checking if its center of mass is inside the box
         idx_factor = [i for i,center in enumerate(centers) if center[0]>box[1] and
          center[0]<box[3] and center[1]>box[0] and center[1]<box[2]]
@@ -468,9 +470,15 @@ def substract_neuropil(data_path,agonia_th,neuropil_pctl,signal_pctl,normalize=F
 
     mask = (1-mask).astype('bool')
     not_cell = images[:,mask]
-    not_cell_med = np.median(not_cell,axis=0)
-    neuropil_trace = not_cell[:,not_cell_med<np.percentile(not_cell_med,neuropil_pctl)].mean(axis=1)
-    denoised_traces = boxes_traces-neuropil_trace
+
+    #not_cell_med = np.median(not_cell,axis=0)
+    #neuropil_trace = not_cell[:,not_cell_med<np.percentile(not_cell_med,neuropil_pctl)].mean(axis=1)
+    #denoised_traces = boxes_traces-neuropil_trace
+
+    neuropil_trace = not_cell.mean(axis=1)
+    neuropil_trace = neuropil_trace/neuropil_trace.mean()
+    denoised_traces =np.array([boxes_traces[i]-neuropil_trace*boxes_traces[i].mean() for i in range(boxes_traces.shape[0])])
+
     return denoised_traces, neuropil_trace
 
 
