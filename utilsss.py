@@ -581,61 +581,38 @@ def event_overlap_don(caiman_traces,denoised_agonia,start_nSigma_bsl=7,stop_nSig
 
 def localvsglobal_neuropil(data_path,agonia_th):
     ''''''
+    data_path = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/L4'
+    agonia_th = .2
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     Yr, dims, T = cm.load_memmap(fname_new)
     images = np.reshape(Yr.T, [T] + list(dims), order='F')
-    # load Caiman results
-    cnm = cnmf.load_CNMF(results_caiman_path)
-    # calculate the centers of the CaImAn factors
-    centers = np.empty((cnm.estimates.A.shape[1],2))
-    for i,factor in enumerate(cnm.estimates.A.T):
-        centers[i] = center_of_mass(factor.toarray().reshape(cnm.estimates.dims,order='F'))
 
     with open(boxes_path,'rb') as f:
         boxes = pickle.load(f)
         f.close()
     # keep only cells above confidence threshold
     boxes = boxes[boxes[:,4]>agonia_th].astype('int')
-    #delete boxes that do not have a caiman cell inside
-    k = 0
-    for cell,box in enumerate(boxes):
-        idx_factor = [i for i,center in enumerate(centers) if center[0]>box[1] and
-         center[0]<box[3] and center[1]>box[0] and center[1]<box[2]]
-        if not idx_factor:
-            boxes = np.delete(boxes,cell-k,axis=0)
-            k += 1
 
-    boxes_traces = np.empty((boxes.shape[0],images.shape[0]))
     mask = np.zeros(images.shape[1:],dtype=bool)
-
     for cell,box in enumerate(boxes):
-        #boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))
-        med = np.median(images[:,box[1]:box[3],box[0]:box[2]],axis=0)
-        box_trace = images[:,box[1]:box[3],box[0]:box[2]]
-        boxes_traces[cell] = box_trace[:,med>np.percentile(med,signal_pctl)].mean(axis=1)
         mask[box[1].astype('int'):box[3].astype('int'),box[0].astype('int'):box[2].astype('int')]=1
 
     mask = (1-mask).astype('bool')
     not_cell = images[:,mask]
+    neuropil_trace = not_cell.mean(axis=1)
+    local_global_corr = np.zeros(boxes.shape[0])
 
-    return
+    for cell,box in enumerate(boxes):
+        half_width_x = ((box[3]-box[1])/2).astype('int')
+        half_width_y = ((box[2]-box[0])/2).astype('int')
+        x_0 = [box[1]-half_width_x if (box[1]-half_width_x)>=0 else 0][0]
+        y_0 = [box[0]-half_width_y if (box[0]-half_width_y)>=0 else 0][0]
+        local_mask = mask[x_0:box[3]+half_width_x,y_0:box[2]+half_width_y]
+        big_box = images[:,x_0:box[3]+half_width_x,y_0:box[2]+half_width_y]
+        local_noise = big_box[:,local_mask].mean(axis=1)
+        local_global_corr[cell] = np.corrcoef([local_noise,neuropil_trace])[1,0]
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    return local_global_corr
 
 
 
