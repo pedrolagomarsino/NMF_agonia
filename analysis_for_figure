@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import pickle
 import warnings
@@ -11,6 +12,7 @@ import holoviews as hv
 import matplotlib.pyplot as plt
 from scipy.stats import ttest_ind
 from matplotlib.patches import Rectangle
+from sklearn.linear_model import LinearRegression
 from scipy.ndimage.measurements import center_of_mass
 from caiman.source_extraction.cnmf import cnmf as cnmf
 from caiman.source_extraction.cnmf import params as params
@@ -20,6 +22,10 @@ with warnings.catch_warnings():
     warnings.filterwarnings("ignore",category=FutureWarning)
     import utilsss as ut
 hv.extension('matplotlib')
+
+sys.path.insert(1, '/home/pedro/Work/Hippocampus/code')
+import to_Pedro as sut
+
 
 data_path = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/L4'
 data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
@@ -106,6 +112,8 @@ cnm,cnm2 = ut.run_caiman_pipeline(data_path,opts,refit=True,component_evaluation
 cnm.estimates.nb_view_components(img=median_projection, denoised_color='red')
 
 # correlations
+pepe =seeded.estimates.f.T[:,0]
+np.corrcoef([pepe,neuropil_trace])[1,0]
 
 ## substract neuropil out of the mean of the boxes
 denoised_traces, neuropil_trace = ut.substract_neuropil(data_path,agonia_th=agonia_th,neuropil_pctl=100,signal_pctl=80)
@@ -141,14 +149,14 @@ plt.imshow(corr_denoised)
 #plt.subplot(134)
 #plt.title('Manual vs CaImAn denoising')
 #plt.imshow(corrs_comp_denoised)
-plt.savefig(os.path.join(data_path,'correlation_matrices'),format='pdf')
+plt.savefig(os.path.join(data_path,'correlation_matrices_weighted_neuropil'),format='pdf')
 plt.show()
 fig,ax = plt.subplots(figsize=(5,5))
 plt.title('MedianVsCaiman Correlations',fontsize=15)
 plt.boxplot([corr_comp,corrs_comp_denoised])
 ax.set_xticklabels(['median','neuropil_subtracted'])
 plt.ylim([0,1])
-plt.savefig(os.path.join(data_path,'correlation_median_or_denoisedvsCaiman'),format='pdf')
+plt.savefig(os.path.join(data_path,'correlation_median_or_denoised_weightedvsCaiman'),format='pdf')
 plt.show()
 ttest_ind(corr_comp,corrs_comp_denoised,equal_var=False)
 
@@ -160,6 +168,10 @@ cumulative = np.cumsum(values)
 plt.plot(base1[:-1], cumulative_denoised, c='blue')
 plt.plot(base[:-1], cumulative, c='green')
 
+#local vs global noise correlations
+local_global_corr = ut.localvsglobal_neuropil(data_path,.2)
+plt.boxplot(local_global_corr)
+plt.ylim([0,1])
 
 
 clust_boxes = sns.clustermap(corr_boxes, method='average', metric='euclidean', figsize=(20,20), cmap=plt.cm.viridis, vmin=-1, vmax=1)
@@ -181,8 +193,40 @@ plt.savefig(os.path.join(data_path,'Dendrogram_meanboxes_denoised'),format='pdf'
 # performance
 
 #usar pca para ver si esta el neuropilo y ver los pesos sobre cada neurona.
+stn = np.zeros(seeded.estimates.C.shape[0])
+#for trace in seeded.estimates.C:
+trace = seeded.estimates.C[9]
+stn = np.array([(max(trace)-trace.mean())/np.std(trace[trace<np.std(trace)]) for trace in seeded.estimates.C])
+
+stnr = ut.signal_to_noise(data_path,agonia_th)
+
+plt.plot(np.log(stnr),corrs_comp_denoised,'.')
+plt.plot([min(np.log(stnr)),max(np.log(stnr))],model.predict(np.array([min(np.log(stnr)), max(np.log(stnr))]).reshape(-1,1)))
+np.logical_and([True, True, False],np.array([True, False, True]))
+False and True
+pepe = stnr[np.logical_and(np.linspace(0,len(stnr)-1,len(stnr))!=99,np.linspace(0,len(stnr)-1,len(stnr))!=93)]
+papa = corrs_comp_denoised[np.logical_and(np.linspace(0,len(stnr)-1,len(stnr))!=99,np.linspace(0,len(stnr)-1,len(stnr))!=93)]
+plt.plot(np.log(pepe),papa,'.')
+plt.plot([min(np.log(pepe)),max(np.log(pepe))],model.predict(np.array([min(np.log(pepe)), max(np.log(pepe))]).reshape(-1,1)))
+
+model = LinearRegression(fit_intercept=True)
+reg = model.fit(np.log(stnr).reshape(-1,1),corrs_comp_denoised)
+reg = model.fit(np.log(pepe).reshape(-1,1),papa)
 
 
+np.argmin(stnr)
+stnr[99]
+stnr[93]
+np.argmin(stnr[np.linspace(0,len(stnr)-1,len(stnr))!=99])
+reg.score(stnr.reshape(-1,1),corrs_comp_denoised)
+reg.coef_
+reg.intercept_
+reg.singular_
+
+np.argmin(corrs_comp_denoised)
+np.argmin(stn[np.linspace(0,len(stn)-1,len(stn))!=40])
+stn[26]
+stn[43]
 # event detection by Luca
 from scipy.signal import butter,filtfilt,savgol_filter, find_peaks
 def butter_lowpass_filter(data, cutoff, fs, order):
@@ -232,12 +276,12 @@ np.argmin(ec_den)
 plt.plot(seeded.estimates.C[40])
 plt.plot(denoised_traces[21])
 
-plt.boxplot(ut.event_overlap(seeded.estimates.C,denoised_traces,1))
+plt.boxplot(ut.event_overlap(seeded.estimates.C,denoised_traces,2))
 plt.boxplot(ut.event_overlap(seeded.estimates.C,boxes_traces,2))
 
-plt.boxplot(ut.event_periods_correlation(seeded.estimates.C,denoised_traces,1))
+plt.boxplot(ut.event_periods_correlation(seeded.estimates.C,denoised_traces,1.5))
 plt.ylim([0,1])
-plt.boxplot(ut.event_periods_correlation(seeded.estimates.C,boxes_traces,1))
+plt.boxplot(ut.event_periods_correlation(seeded.estimates.C,boxes_traces,1.5))
 plt.ylim([0,1])
 
 
@@ -253,12 +297,28 @@ TH_0 = M_0+n_std*STD_0
 
 events_corr[i] = np.corrcoef([trace_0[trace_0>TH_0],trace_1[trace_0>TH_0]])[1,0]
 
+ut.event_overlap_don(seeded.estimates.C,denoised_traces,start_nSigma_bsl=7,stop_nSigma_bsl=5)
 
+(pos_events_0, _, _, _, _, _) = sut.eventFinder(
+trace = seeded.estimates.C[0], start_nSigma_bsl = 7, stop_nSigma_bsl = 5,
+FPS = 3, minimumDuration = .3, debugPlot = False)
+pos_events_0[pos_events_0!=0]=1
 
+(pos_events_1, _, _, _, _, _) = sut.eventFinder(
+trace = denoised_traces[0], start_nSigma_bsl = 7, stop_nSigma_bsl = 5,
+FPS = 3, minimumDuration = .3, debugPlot = False)
+pos_events_1[pos_events_1!=0]=1
 
-ut.event_periods_correlation(seeded.estimates.C,denoised_traces,1.5)
+sum_events = pos_events_0+pos_events_1
+sum_events[sum_events==2]=1
+
+events_overlap[i] = sum(pos_events_0*pos_events_1)/sum(sum_events)
+
+plt.boxplot(ut.event_periods_correlation_dol(seeded.estimates.C,boxes_traces))
+
+plt.boxplot(ut.event_periods_correlation_dol(seeded.estimates.C,denoised_traces))
 n_std = 1.5
-cell = 46
+cell = 10
 trace_1 = denoised_traces[cell].copy()
 trace_1 = (trace_1-min(trace_1))/max(trace_1-min(trace_1))
 trace_0 = seeded.estimates.C[cell]/max(seeded.estimates.C[cell])
@@ -285,8 +345,149 @@ plt.plot(seeded.estimates.C[cell])
 pepe = denoised_traces+neuropil_trace
 neuropil_trace_norm = neuropil_trace/np.sqrt((neuropil_trace**2).sum())
 plt.plot(pepe[cell]/np.sqrt((pepe[cell]**2).sum())-neuropil_trace_norm)
-plt.plot(denoised_traces[cell]+neuropil_trace)
-plt.plot(neuropil_trace_norm)#
+neuropil_trace_norm = neuropil_trace/np.mean(neuropil_trace)
+plt.plot(pepe[cell]/np.median(pepe[cell])-neuropil_trace_norm)
+plt.plot(pepe[cell]-neuropil_trace_norm*np.median(pepe[cell]))
+plt.plot(pepe[1]-neuropil_trace_norm*np.mean(pepe[1]))
+plt.plot(neuropil_trace_norm*np.mean(pepe[1]))
+
+plt.plot(pepe[1])
+plt.plot(seeded.estimates.f.T)#
+plt.plot(neuropil_trace)
+plt.plot(denoised_traces[10]+neuropil_trace)
+
+
+
+signal_pctl = 80
+
+
+Yr, dims, T = cm.load_memmap(fname_new)
+images = np.reshape(Yr.T, [T] + list(dims), order='F')
+# load Caiman results
+cnm = cnmf.load_CNMF(results_caiman_path)
+# calculate the centers of the CaImAn factors
+centers = np.empty((cnm.estimates.A.shape[1],2))
+for i,factor in enumerate(cnm.estimates.A.T):
+    centers[i] = center_of_mass(factor.toarray().reshape(cnm.estimates.dims,order='F'))
+
+with open(boxes_path,'rb') as f:
+    boxes = pickle.load(f)
+    f.close()
+# keep only cells above confidence threshold
+boxes = boxes[boxes[:,4]>agonia_th].astype('int')
+#delete boxes that do not have a caiman cell inside
+k = 0
+for cell,box in enumerate(boxes):
+    idx_factor = [i for i,center in enumerate(centers) if center[0]>box[1] and
+     center[0]<box[3] and center[1]>box[0] and center[1]<box[2]]
+    if not idx_factor:
+        boxes = np.delete(boxes,cell-k,axis=0)
+        k += 1
+
+boxes_traces = np.empty((boxes.shape[0],images.shape[0]))
+mask = np.zeros(images.shape[1:],dtype=bool)
+
+for cell,box in enumerate(boxes):
+    #boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))
+    med = np.median(images[:,box[1]:box[3],box[0]:box[2]],axis=0)
+    box_trace = images[:,box[1]:box[3],box[0]:box[2]]
+    boxes_traces[cell] = box_trace[:,med>np.percentile(med,signal_pctl)].mean(axis=1)
+    mask[box[1].astype('int'):box[3].astype('int'),box[0].astype('int'):box[2].astype('int')]=1
+
+mask = (1-mask).astype('bool')
+not_cell = images[:,mask]
+
+not_cell_med = np.median(not_cell,axis=0)
+neuropil_trace = not_cell[:,not_cell_med<np.percentile(not_cell_med,neuropil_pctl)].mean(axis=1)
+denoised_traces = boxes_traces-neuropil_trace
+
+not_cell.shape
+images.shape[1]*images.shape[2]
+(not_cell/not_cell_med).shape
+ neuropilo = (not_cell/not_cell_med).mean(axis=1)
+ plt.plot(neuropilo)
+plt.plot(neuropil_trace)
+
+
+neuropilo.mean()
+plt.plot(boxes_traces[23]-neuropilo*np.mean(boxes_traces[23])*1.5)
+
+np.corrcoef([boxes_traces[10]-neuropilo*np.mean(boxes_traces[10])/2,neuropil_trace])[1,0]
+mult_factor = np.zeros(boxes_traces.shape[0])
+for cell in range(boxes_traces.shape[0]):
+    noise_corr = np.zeros(12)
+    mult = [0.1, .2, .3, .4, .5, .6, .7, .8, .9, 1, 1.5, 2]
+    for i,c in enumerate([boxes_traces[cell].mean()*x for x in mult]):
+        noise_corr[i] = np.corrcoef([boxes_traces[cell]-neuropilo*c,neuropil_trace])[1,0]
+
+    mult_factor[cell] = mult[np.argmin(abs(noise_corr))]
+
+plt.hist(mult_factor,20)
+mult_factor
+
+mult_factor_med = np.zeros(boxes_traces.shape[0])
+for cell in range(boxes_traces.shape[0]):
+    mult_factor_med[cell] = abs(np.corrcoef([boxes_traces[cell]-neuropilo*boxes_traces[cell].mean(),neuropil_trace])[1,0])
+
+mult_fac = np.zeros(boxes_traces.shape[0])
+for cell in range(boxes_traces.shape[0]):
+    mult_fac[cell] = abs(np.corrcoef([denoised[cell],neuropil_trace])[1,0])
+
+
+plt.hist(mult_factor_med)
+plt.hist(mult_factor_med)
+plt.hist(mult_fac)
+
+denoised = np.array([boxes_traces[i]-neuropilo*boxes_traces[i].mean() for i in range(boxes_traces.shape[0])])
+plt.plot(denoised_traces[12])
+
+cell = 1
+(pos_events_trace, _, _, _, _, _) = sut.eventFinder(
+    trace = denoised_traces[cell]-np.percentile(denoised_traces[cell],10), start_nSigma_bsl = 4, stop_nSigma_bsl = 3,
+    FPS = 3, minimumDuration = .3, debugPlot = False)
+plt.plot(denoised_traces[cell])-np.percentile(denoised_traces[cell],10))
+plt.plot(pos_events_trace)
+plt.show()
+(pos_events_trace_C, _, _, _, _, _) = sut.eventFinder(
+    trace = seeded.estimates.C[cell], start_nSigma_bsl = 7, stop_nSigma_bsl = 5,
+    FPS = 3, minimumDuration = .3, debugPlot = False)
+plt.plot(seeded.estimates.C[cell])
+plt.plot(pos_events_trace_C)
+
+
+
+plt.plot(seeded.estimates.C[cell,pos_events_trace_C!=0])
+np.corrcoef([seeded.estimates.C[cell,pos_events_trace_C!=0],denoised_traces[cell,pos_events_trace_C!=0]])[1,0]
+np.corrcoef([seeded.estimates.C[cell],denoised_traces[cell])])[1,0]
+ut.event_periods_correlation_dol(seeded.estimates.C,denoised_traces)
+
+
+images.mean(axis=(0,1,2))
+boxes_traces[1].mean()
+boxes_traces[10].mean()
+neuropil_trace.mean()
+np.median(neuropil_trace)
+
+np.corrcoef([seeded.estimates.f.T[:,0],neuropil_trace])[1,0]
+
+plt.plot(seeded.estimates.f.T[:,0])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

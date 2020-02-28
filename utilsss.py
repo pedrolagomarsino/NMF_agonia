@@ -581,8 +581,6 @@ def event_overlap_don(caiman_traces,denoised_agonia,start_nSigma_bsl=7,stop_nSig
 
 def localvsglobal_neuropil(data_path,agonia_th):
     ''''''
-    data_path = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/L4'
-    agonia_th = .2
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     Yr, dims, T = cm.load_memmap(fname_new)
     images = np.reshape(Yr.T, [T] + list(dims), order='F')
@@ -613,6 +611,63 @@ def localvsglobal_neuropil(data_path,agonia_th):
         local_global_corr[cell] = np.corrcoef([local_noise,neuropil_trace])[1,0]
 
     return local_global_corr
+
+def signal_to_noise(data_path,agonia_th):
+    data_path = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/L4'
+    agonia_th = .2
+    data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
+    Yr, dims, T = cm.load_memmap(fname_new)
+    images = np.reshape(Yr.T, [T] + list(dims), order='F')
+
+    with open(boxes_path,'rb') as f:
+        boxes = pickle.load(f)
+        f.close()
+    # keep only cells above confidence threshold
+    boxes = boxes[boxes[:,4]>agonia_th].astype('int')
+
+    stnr = np.zeros(boxes.shape[0])
+    for cell,box in enumerate(boxes):
+        box_trace = images[:,box[1]:box[3],box[0]:box[2]]
+        mean_box = box_trace.mean(axis=(1,2))
+        max_trace = max(mean_box)
+        noise_box = np.std(box_trace[box_trace<np.percentile(box_trace,25)])
+        stnr[cell] = max_trace/noise_box
+
+    return stnr
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
