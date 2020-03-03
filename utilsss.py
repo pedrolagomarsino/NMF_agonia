@@ -188,7 +188,7 @@ def trace_correlation(data_path, agonia_th, select_cells=False,plot_results=True
     cell_corr = np.empty(len(boxes_traces))
     neuropil_trace = np.zeros(T)
     if denoise:
-        _,neuropil_trace = substract_neuropil(data_path,agonia_th,100,80)
+        _,neuropil_trace,neuropil_power = substract_neuropil(data_path,agonia_th,100,80)
     for cell,box in enumerate(boxes):
         # calculate boxes traces as means over images
         #boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))-neuropil_trace
@@ -196,11 +196,11 @@ def trace_correlation(data_path, agonia_th, select_cells=False,plot_results=True
         boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))
 
         #for using the percentile criteria
-        #med = np.median(images[:,box[1]:box[3],box[0]:box[2]],axis=0)
-        #box_trace = images[:,box[1]:box[3],box[0]:box[2]]
-        #boxes_traces[cell] = box_trace[:,med>np.percentile(med,80)].mean(axis=1)
-
-        boxes_traces[cell] = boxes_traces[cell]-neuropil_trace*boxes_traces[cell].mean()
+        med = np.median(images[:,box[1]:box[3],box[0]:box[2]],axis=0)
+        box_trace = images[:,box[1]:box[3],box[0]:box[2]]
+        boxes_traces[cell] = box_trace[:,np.logical_and(med>np.percentile(med,80),med<np.percentile(med,95))].mean(axis=1)
+        boxes_traces[cell] = boxes_traces[cell]-neuropil_trace*neuropil_power*.7
+        #boxes_traces[cell] = boxes_traces[cell]-neuropil_trace*boxes_traces[cell].mean()
         # get the asociated CaImAn factor by checking if its center of mass is inside the box
         idx_factor = [i for i,center in enumerate(centers) if center[0]>box[1] and
          center[0]<box[3] and center[1]>box[0] and center[1]<box[2]]
@@ -485,10 +485,11 @@ def substract_neuropil(data_path,agonia_th,neuropil_pctl,signal_pctl,normalize=F
     #denoised_traces = boxes_traces-neuropil_trace
 
     neuropil_trace = not_cell.mean(axis=1)
-    neuropil_trace = neuropil_trace/neuropil_trace.mean()
+    neuropil_power = neuropil_trace.mean()
+    neuropil_trace = neuropil_trace/neuropil_power
     denoised_traces =np.array([boxes_traces[i]-neuropil_trace*boxes_traces[i].mean() for i in range(boxes_traces.shape[0])])
 
-    return denoised_traces, neuropil_trace
+    return denoised_traces, neuropil_trace, neuropil_power
 
 
 def event_overlap(traces_0,traces_1,n_std):
@@ -641,27 +642,59 @@ def signal_to_noise(data_path,agonia_th):
     return stnr
 
 
+def _p_extract(patch,mima):
+    mi,ma=np.percentile(patch,mima)
+    sel=patch[patch>=mi]
+    if ma>mi:
+        sel=sel[sel<=ma]
+    return np.mean(sel)
+
+class Extractor:
+
+    def __init__(self, pmin=80, pmax=95, workers=12):
+        from multiprocessing import Pool
+        self.data=np.full((1,1),np.nan,np.double)
+        self.mima=(pmin,pmax)
+        self.pool=Pool(workers)
+
+    def extract(self, frame, boxes):
+        new_frame=np.full((1,self.data.shape[1]), np.nan, np.double)
+        self.data=np.concatenate((self.data,new_frame),axis=0)
+        if len(boxes):
+            if len(boxes)-self.data.shape[1]+1>0:
+                new_cells=np.full((self.data.shape[0],len(boxes)-self.data.shape[1]+1), np.nan, np.double)
+                self.data=np.concatenate((self.data, new_cells), axis=1)
+            patches=[]
+            bg_frame=frame.astype(np.double, copy=True)
+            for b in boxes:
+                bg_frame[int(b[1]):int(b[3]+1),int(b[0]):int(b[2]+1)]=np.nan
+                patches.append(frame[int(b[1]):int(b[3]+1),int(b[0]):int(b[2]+1)].flatten())
+            traces=self.pool.starmap(_p_extract,[(p,self.mima) for p in patches])
+            self.data[-1,1:]=traces
+            self.data[-1,1:]-=np.nanmean(bg_frame)
+
+    def get_traces(self, tail=0):
+        if tail>0 and tail>self.data.shape[0]:
+            return self.data[int(-tail):,1:]
+        else:
+            return self.data[1:,1:]
 
 
+def traces_extraction_AGONIA(data_path,agonia_th):
+    data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
+    Yr, dims, T = cm.load_memmap(fname_new)
+    images = np.reshape(Yr.T, [T] + list(dims), order='F')
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    with open(boxes_path,'rb') as f:
+        boxes = pickle.load(f)
+        f.close()
+    # keep only cells above confidence threshold
+    boxes = boxes[boxes[:,4]>agonia_th].astype('int')
+    ola = Extractor()
+    for frame in images:
+        ola.extract(frame,boxes)
+    traces = ola.get_traces()
+    return traces.T
 
 
 

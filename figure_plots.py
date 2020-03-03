@@ -68,24 +68,35 @@ datasets = {'L4':{'agonia_th' : .2},
             }
 # if the analysis has already been done there should be a pickle with the analysis in a dictionary
 datasets = pickle.load(open(os.path.join(PATH,'figure_dict.pkl'),'rb'))
+names = []
+for key in datasets.keys():
+    if key!='Sofroniew':
+        names.append(key)
 
 ##########################################
 ########### correlation figure ###########
 ##########################################
 
 for key in datasets.keys():
-    data_path = os.path.join(PATH,key)
-    data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
-    seeded = cnmf.load_CNMF(results_caiman_path)
-    datasets[key]['corrs_comp_denoised'], _, _ = ut.trace_correlation(data_path,
-    agonia_th=datasets[key]['agonia_th'],select_cells=False,plot_results=False,denoise=True)
-    #datasets[key]['corrs_comp_denoised']=np.array([3,1,2.2])
+    if key!='Sofroniew':
+        print(key)
+        data_path = os.path.join(PATH,key)
+        data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
+        seeded = cnmf.load_CNMF(results_caiman_path)
+        traces = ut.traces_extraction_AGONIA(data_path,datasets[key]['agonia_th'])
+        corr = np.empty(traces.shape[0])
+        for i,trace in enumerate(traces):
+            corr[i] = np.corrcoef([trace,seeded.estimates.C[i]])[1,0]
+        datasets[key]['corrs_comp_denoised'] = corr
+        #datasets[key]['corrs_comp_denoised'], _, _ = ut.trace_correlation(data_path,
+        #agonia_th=datasets[key]['agonia_th'],select_cells=False,plot_results=False,denoise=True)
 
+#datasets[key]['corrs_comp_denoised']=np.array([3,1,2.2])
 fig,ax = plt.subplots(figsize=(5,5))
-plt.title('MedianVsCaiman Correlations',fontsize=15)
+plt.title('AgoniaVsCaiman Trace Correlations',fontsize=15)
 plt.boxplot([datasets['L4']['corrs_comp_denoised'],datasets['CA1']['corrs_comp_denoised'],datasets['ABO']['corrs_comp_denoised'],
-             datasets['Sofroniew']['corrs_comp_denoised'],datasets['Svoboda']['corrs_comp_denoised'],datasets['VPM']['corrs_comp_denoised']])
-ax.set_xticklabels(datasets.keys())
+             datasets['Svoboda']['corrs_comp_denoised'],datasets['VPM']['corrs_comp_denoised']])
+ax.set_xticklabels(names)
 plt.ylim([0,1])
 #plt.savefig(os.path.join(data_path,'correlation_median_or_denoised_weightedvsCaiman'),format='pdf')
 plt.savefig(os.path.join(PATH,'correlation_agonia_vs_Caiman.pdf'),format='pdf')
@@ -108,11 +119,11 @@ for key in datasets.keys():
         corr = np.append(corr,datasets[key]['corrs_comp_denoised'])
 
 distcorr(stnr,corr)
-#np.corrcoef([stnr,corr])[1,0]
-#scipy.stats.pearsonr(stnr,corr)
-#distcorr(np.log(stnr),corr)
-#np.corrcoef([np.log(stnr),corr])[1,0]
-#scipy.stats.pearsonr(np.log(stnr),corr)
+# np.corrcoef([stnr,corr])[1,0]
+# scipy.stats.pearsonr(stnr,corr)
+# distcorr(np.log(stnr),corr)
+# np.corrcoef([np.log(stnr),corr])[1,0]
+# scipy.stats.pearsonr(np.log(stnr),corr)
 
 plt.figure()
 legend = []
