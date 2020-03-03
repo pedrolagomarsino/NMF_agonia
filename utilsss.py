@@ -192,7 +192,14 @@ def trace_correlation(data_path, agonia_th, select_cells=False,plot_results=True
     for cell,box in enumerate(boxes):
         # calculate boxes traces as means over images
         #boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))-neuropil_trace
+
         boxes_traces[cell] = images[:,box[1]:box[3],box[0]:box[2]].mean(axis=(1,2))
+
+        #for using the percentile criteria
+        #med = np.median(images[:,box[1]:box[3],box[0]:box[2]],axis=0)
+        #box_trace = images[:,box[1]:box[3],box[0]:box[2]]
+        #boxes_traces[cell] = box_trace[:,med>np.percentile(med,80)].mean(axis=1)
+
         boxes_traces[cell] = boxes_traces[cell]-neuropil_trace*boxes_traces[cell].mean()
         # get the asociated CaImAn factor by checking if its center of mass is inside the box
         idx_factor = [i for i,center in enumerate(centers) if center[0]>box[1] and
@@ -613,8 +620,6 @@ def localvsglobal_neuropil(data_path,agonia_th):
     return local_global_corr
 
 def signal_to_noise(data_path,agonia_th):
-    data_path = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/L4'
-    agonia_th = .2
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     Yr, dims, T = cm.load_memmap(fname_new)
     images = np.reshape(Yr.T, [T] + list(dims), order='F')
