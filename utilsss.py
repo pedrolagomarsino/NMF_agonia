@@ -70,7 +70,11 @@ def get_files_names(data_path):
 
 def caiman_motion_correct(fnames,opts):
     '''do the motion correction of the Caiman pipeline and save results.
-    input: name of tiff movie and opts object'''
+    Parameters
+    ----------
+    fnames : string
+        name of tiff movie
+    opts : caiman object with the options for motion correction'''
 
     #%% start a cluster for parallel processing (if a cluster already exists it will be closed and a new session will be opened)
     if 'dview' in locals():
@@ -89,16 +93,34 @@ def caiman_motion_correct(fnames,opts):
 
 def agonia_detect(data_path,data_name,median_projection,multiplier=1,th=0.05):
     '''detect cells with Agonia using the median projection and save results.
-    INPUTS: Multiplier: set a priori for each dataset
-            th: threshold for confidence of box, default is 0.05.
-            It is recommended to detect using the default which is the minimun
-            and filter afterwards'''
+    Parameters
+    ----------
+    data_path : string
+        path to folder containing the data
+    data_name : list with string
+        name of tiff series
+    median_projection: ndarray_like
+        output of get_files_names function. Is the median proyection of the
+        t-series over which the detection is performed
+    Multiplier: float
+        only parameter needed for agonia, predefined for each dataset
+    th: float
+        threshold for detection confidence for each box, default is 0.05.
+        It is recommended to detect using the default which is the minimun and
+        filter afterwards'''
     det = AGOnIA('L4+CA1_800.h5',True)
     ROIs = det.detect(median_projection,threshold=th,multiplier=multiplier)
     pickle.dump( ROIs, open( os.path.join(data_path,os.path.splitext(data_name[0])[0] + '_boxes.pkl'), "wb" ) )
 
 def seeded_Caiman_wAgonia(data_path,opts,agonia_th):
-    '''Run Caiman using as seeds the boxes detected with Agonia and save results'''
+    '''Run Caiman using as seeds the boxes detected with Agonia and save results
+    Parameters
+    ----------
+    data_path : string
+        path to folder containing the data
+    opts : caiman object with the options for motion correction
+    agonia_th : float
+        threshold for detection confidence for each box'''
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
 
     Yr, dims, T = cm.load_memmap(fname_new)
@@ -146,16 +168,28 @@ def seeded_Caiman_wAgonia(data_path,opts,agonia_th):
 def trace_correlation(data_path, agonia_th, select_cells=False,plot_results=True,denoise=False):
     '''Calculate the correlation between the mean of the Agonia Box and the CaImAn
     factor.
-    INPUTS:
-            agonia_th: confidence threshold for detected Agonia boxes
-            select_cells: if True get index of active cells
-            plot_results: if True do boxplot of correlation values for all cells, if
-                          selected_cells, use only active cells
-    OUTPUT:
-            cell_corr: corrcoef value for all cells
-            idx_active: if select_cells=True returns index of active cells, otherwise
-                        returns index of all cells
-            boxes_traces: temporal trace for each box that has an asociated caiman factor'''
+    Parameters
+    ----------
+    data_path : string
+        path to folder containing the data
+    agonia_th : float
+        threshold for detection confidence for each box
+    select_cells: bool, optional
+        if True get index of active cells
+    plot_results: bool, optional
+        if True do boxplot of correlation values for all cells, if selected_cells,
+        use only active cells
+    denoise : bool, optional
+        if True subtract neuropil
+    Returns
+    -------
+    cell_corr : numpy array
+        corrcoef value for all cells
+    idx_active : list
+        if select_cells=True returns index of active cells, otherwise returns
+        index of all cells
+    boxes_traces : NxT ndarray
+        temporal trace for the N box that has an asociated caiman factor'''
 
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     # load Caiman results
@@ -228,17 +262,28 @@ def trace_correlation(data_path, agonia_th, select_cells=False,plot_results=True
 
 def run_caiman_pipeline(data_path,opts,refit=False,component_evaluation=False,fr=14.913,rf=15,decay_time=0.6):
     '''Run the caiman pipeline out of the box, without using Agonia seeds.
-    INPUTS:
-            data_path: path with tif movie and median projection
-            opts: object with caiman option parameters
-            refit: if True re-run CNMF seeded on the selected components from the fitting
-            component_evaluation: if True filter components using shape and signal criteria
-            fr = frame rate of video
-            rf = half-size of the patches in pixels (in seeded is None)
-            decay_time = decay time of calcium indicator
-    OUTPUT:
-            cnm: out of the box results of caiman detection
-            cnm2: refited-filtered results if refit, component_evaluations flags are True'''
+
+    Parameters
+    ----------
+    data_path : string
+        path to folder containing the data
+    opts : caiman object with option parameters
+    refit : bool, optional
+        if True re-run CNMF seeded on the selected components from the fitting
+    component_evaluation : bool, optional
+        if True filter components using shape and signal criteria
+    fr : float
+        frame rate of video
+    rf : int
+        half-size of the patches in pixels (in seeded is None)
+    decay_time = float
+        decay time of calcium indicator
+
+    Returns
+    -------
+    cnm : out of the box results of caiman detection
+    cnm2 : refited-filtered results if refit, component_evaluations flags are True'''
+
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     opts_dict = {'only_init': True,
                  'rf': rf,#15
@@ -272,10 +317,19 @@ def plot_AGonia_boxes(data_path,Score,box_idx):
     '''Function used as input for the dynamic map in function boxes_exploration():
     holoviews based plot to see Agonia boxes on top of median projection and mean trace
     for selected boxes.
-    INPUTS:
-            data_path: path to folder with data and analysis results
-            Score: agonia confidence treshold to filter boxes
-            box_idx: index of box to plot trace, selected cell is indicated with green square'''
+
+    Parameters
+    ----------
+    data_path : string
+        path to folder containing the data
+    Score : float
+        threshold for detection confidence for each box
+    box_idx : int
+        index of box to plot trace
+    Returns
+    -------
+    Holoviews image to feed to dynamic map, selected cell is indicated with green square'''
+
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     Yr, dims, T = cm.load_memmap(fname_new)
     images = np.reshape(Yr.T, [T] + list(dims), order='F')
@@ -440,8 +494,29 @@ def memmap_movie(fnames,load=True):
         return images
 
 
-def substract_neuropil(data_path,agonia_th,neuropil_pctl,signal_pctl,normalize=False):
-    ''''''
+def substract_neuropil(data_path,agonia_th,neuropil_pctl,signal_pctl):
+    '''Calculate the neuropil trace as the average fluorescence of every pixel that is not in a box.
+    subtract it to every box trace, calculated as the activity of the pixels above the signal_pctl.
+
+    Parameters
+    ----------
+    data_path : string
+        path to folder containing the data
+    agonia_th : float
+        threshold for detection confidence for each box
+    neuropil_pctl : int
+        percentile of pixels intensity bellow which pixel is considered to calculate neuropil
+    signal_pctl : int
+        percentile of pixels intensity above which pixel is considered to calculate trace
+    Returns
+    -------
+    denoised_traces : NxT ndarray
+        temporal traces after neuropil subtraction for the N boxes
+    neuropil_trace : array
+        normalized temporal trace of background noise, length T
+    neuropil_power : float
+        mean of neuropil trace before normalization
+    '''
 
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     Yr, dims, T = cm.load_memmap(fname_new)
@@ -492,28 +567,53 @@ def substract_neuropil(data_path,agonia_th,neuropil_pctl,signal_pctl,normalize=F
     return denoised_traces, neuropil_trace, neuropil_power
 
 
-def event_overlap(traces_0,traces_1,n_std):
+def event_overlap(caiman_traces,denoised_agonia,n_std,start_nSigma_bsl=7,stop_nSigma_bsl=5):
     '''binzarize traces (events=1 else=0), then check if events in traces_0 are
-    similar to events in traces_1'''
+    similar to events in traces_1
+    Parameters
+    ----------
+    method : hard_th or dombeck
+        if hard_th events are everything above mean + n_std*std. If dombeck, uses
+        function given by Seba to select events as in paper from dombeck
+    n_std : float
+        parameter for method hard_th
+    start_nSigma_bsl, stop_nSigma_bsl : float
+        parameters for method dombeck
+    Returns
+    -------
+    events_overlap : percentage of time in which events of both traces are
+        overlaped out of the total event-time
+    '''
     if traces_0.shape != traces_1.shape:
         print('Error: traces must be same length, and same number of factors')
     else:
-        events_overlap = np.zeros(traces_0.shape[0])
-        for i,trace in enumerate(traces_0):
-            trace_1 = traces_1[i].copy()
-            trace_0 = trace.copy()
+        events_overlap = np.zeros(caiman_traces.shape[0])
+        for i,trace in enumerate(caiman_traces):
+            if method==hard_th:
+                trace_1 = denoised_agonia[i].copy()
+                trace_0 = trace.copy()
 
-            STD_0 = np.std(trace_0)
-            M_0 = trace_0.mean()
-            TH_0 = M_0+n_std*STD_0
-            trace_0[trace_0<TH_0]=0
-            trace_0[trace_0>=TH_0]=1
+                STD_0 = np.std(trace_0)
+                M_0 = trace_0.mean()
+                TH_0 = M_0+n_std*STD_0
+                trace_0[trace_0<TH_0]=0
+                trace_0[trace_0>=TH_0]=1
 
-            STD_1 = np.std(trace_1)
-            M_1 = trace_1.mean()
-            TH_1 = M_1+n_std*STD_1
-            trace_1[trace_1<TH_1]=0
-            trace_1[trace_1>=TH_1]=1
+                STD_1 = np.std(trace_1)
+                M_1 = trace_1.mean()
+                TH_1 = M_1+n_std*STD_1
+                trace_1[trace_1<TH_1]=0
+                trace_1[trace_1>=TH_1]=1
+            elif method==dombeck:
+                (trace_0, _, _, _, _, _) = sut.eventFinder(
+                trace = trace, start_nSigma_bsl = start_nSigma_bsl, stop_nSigma_bsl = stop_nSigma_bsl,
+                FPS = 3, minimumDuration = .3, debugPlot = False)
+                trace_0[trace_0!=0]=1
+
+                (trace_1, _, _, _, _, _) = sut.eventFinder(
+                trace = denoised_agonia[i]-np.percentile(denoised_agonia[i],10), start_nSigma_bsl = 4, stop_nSigma_bsl = 3,
+                FPS = 3, minimumDuration = .3, debugPlot = False)
+                trace_1[trace_1!=0]=1
 
             sum_events = trace_0+trace_1
             sum_events[sum_events==2]=1
@@ -523,72 +623,60 @@ def event_overlap(traces_0,traces_1,n_std):
         return events_overlap
 
 
-def event_periods_correlation(caiman_trace,ago_denoised,n_std):
-    '''select only event periods and correlate traces denoised with different methods'''
+def event_periods_correlation(caiman_trace,ago_denoised,method=dombeck,n_std=2,start_nSigma_bsl=7,stop_nSigma_bsl=5):
+    '''select only event periods and correlate traces denoised with different methods
+    Parameters
+    ----------
+    method : hard_th or dombeck
+        if hard_th events are everything above mean + n_std*std. If dombeck, uses
+        function given by Seba to select events as in paper from dombeck
+    n_std : float
+        parameter for method hard_th
+    start_nSigma_bsl, stop_nSigma_bsl : float
+        parameters for method dombeck
+    Returns
+    -------
+    events_corr : correlation of signal periods detected as events
+    '''
     if caiman_trace.shape != ago_denoised.shape:
         print('Error: traces must be same length, and same number of factors')
     else:
         events_corr = np.zeros(caiman_trace.shape[0])
         for i,trace in enumerate(caiman_trace):
-            trace_1 = ago_denoised[i].copy()
-            trace_1 = (trace_1-min(trace_1))/max(trace_1-min(trace_1))
-            trace_0 = trace/max(trace)
+            if method == hard_th:
+                trace_1 = ago_denoised[i].copy()
+                trace_1 = (trace_1-min(trace_1))/max(trace_1-min(trace_1))
+                trace_0 = trace/max(trace)
 
-            STD_0 = np.std(trace_0)
-            M_0 = trace_0.mean()
-            TH_0 = M_0+n_std*STD_0
-            #trace_1[trace_0<TH_0]=np.nan
-            #trace_0[trace_0<TH_0]=np.nan
+                STD_0 = np.std(trace_0)
+                M_0 = trace_0.mean()
+                TH_0 = M_0+n_std*STD_0
+                #trace_1[trace_0<TH_0]=np.nan
+                #trace_0[trace_0<TH_0]=np.nan
+            elif method == dombeck:
+                (pos_events_trace_C, _, _, _, _, _) = sut.eventFinder(
+                trace = trace, start_nSigma_bsl = start_nSigma_bsl, stop_nSigma_bsl = stop_nSigma_bsl,
+                FPS = 3, minimumDuration = .3, debugPlot = False)
 
             events_corr[i] = np.corrcoef([trace_0[trace_0>TH_0],trace_1[trace_0>TH_0]])[1,0]
 
     return events_corr
 
-
-
-def event_periods_correlation_dol(caiman_trace,ago_denoised,start_nSigma_bsl=7,stop_nSigma_bsl=5):
-    '''select only event periods and correlate traces denoised with different methods'''
-    if caiman_trace.shape != ago_denoised.shape:
-        print('Error: traces must be same length, and same number of factors')
-    else:
-        events_corr = np.zeros(caiman_trace.shape[0])
-        for i,trace in enumerate(caiman_trace):
-            (pos_events_trace_C, _, _, _, _, _) = sut.eventFinder(
-            trace = trace, start_nSigma_bsl = start_nSigma_bsl, stop_nSigma_bsl = stop_nSigma_bsl,
-            FPS = 3, minimumDuration = .3, debugPlot = False)
-
-            events_corr[i] = np.corrcoef([trace[pos_events_trace_C!=0],ago_denoised[i,pos_events_trace_C!=0]])[1,0]
-
-    return events_corr
-
-
-def event_overlap_don(caiman_traces,denoised_agonia,start_nSigma_bsl=7,stop_nSigma_bsl=5):
-    '''binzarize traces (events=1 else=0), then check if events in caiman_traces are
-    similar to events in denoised_agonia'''
-    if caiman_traces.shape != denoised_agonia.shape:
-        print('Error: traces must be same length, and same number of factors')
-    else:
-        events_overlap = np.zeros(caiman_traces.shape[0])
-        for i,trace in enumerate(caiman_traces):
-            (pos_events_0, _, _, _, _, _) = sut.eventFinder(
-            trace = trace, start_nSigma_bsl = start_nSigma_bsl, stop_nSigma_bsl = stop_nSigma_bsl,
-            FPS = 3, minimumDuration = .3, debugPlot = False)
-            pos_events_0[pos_events_0!=0]=1
-
-            (pos_events_1, _, _, _, _, _) = sut.eventFinder(
-            trace = denoised_agonia[i]-np.percentile(denoised_agonia[i],10), start_nSigma_bsl = 4, stop_nSigma_bsl = 3,
-            FPS = 3, minimumDuration = .3, debugPlot = False)
-            pos_events_1[pos_events_1!=0]=1
-
-            sum_events = pos_events_0+pos_events_1
-            sum_events[sum_events==2]=1
-
-            events_overlap[i] = sum(pos_events_0*pos_events_1)/sum(sum_events)
-
-        return events_overlap
-
 def localvsglobal_neuropil(data_path,agonia_th):
-    ''''''
+    '''Calculate for each cell the local neuropil trace as the average intensity
+    trace of all the surrounding pixels of box that do not belong to another box
+    Where surrounding meaning pixel outside the box and inside a box with double
+    width and double height and same center.
+    Parameters
+    ----------
+    data_path : string
+        path to folder containing the data
+    agonia_th : float
+        threshold for detection confidence for each box
+    Returns
+    -------
+    local_global_corr : array with local vs global noise correlation for each cell
+    '''
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     Yr, dims, T = cm.load_memmap(fname_new)
     images = np.reshape(Yr.T, [T] + list(dims), order='F')
@@ -621,6 +709,13 @@ def localvsglobal_neuropil(data_path,agonia_th):
     return local_global_corr
 
 def signal_to_noise(data_path,agonia_th):
+    '''Calculate signal to noise ratio of each box
+    Parameters
+    ----------
+    data_path : string
+        path to folder containing the data
+    agonia_th : float
+        threshold for detection confidence for each box'''
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     Yr, dims, T = cm.load_memmap(fname_new)
     images = np.reshape(Yr.T, [T] + list(dims), order='F')
@@ -641,6 +736,19 @@ def signal_to_noise(data_path,agonia_th):
 
     return stnr
 
+def signal_to_noise_pixel(data_path,agonia_th):
+    data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
+    Yr, dims, T = cm.load_memmap(fname_new)
+    images = np.reshape(Yr.T, [T] + list(dims), order='F')
+
+    with open(boxes_path,'rb') as f:
+        boxes = pickle.load(f)
+        f.close()
+    # keep only cells above confidence threshold
+    boxes = boxes[boxes[:,4]>agonia_th].astype('int')
+    stnr = np.zeros(boxes.shape[0])
+
+    return stnr
 
 def _p_extract(patch,mima):
     mi,ma=np.percentile(patch,mima)
@@ -650,7 +758,7 @@ def _p_extract(patch,mima):
     return np.mean(sel)
 
 class Extractor:
-
+    '''class for extracting boxes traces as implemented by AGOnIA'''
     def __init__(self, pmin=80, pmax=95, workers=12):
         from multiprocessing import Pool
         self.data=np.full((1,1),np.nan,np.double)
@@ -681,6 +789,7 @@ class Extractor:
 
 
 def traces_extraction_AGONIA(data_path,agonia_th):
+    '''Extract traces of boxes using agonia Extractor class'''
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     Yr, dims, T = cm.load_memmap(fname_new)
     images = np.reshape(Yr.T, [T] + list(dims), order='F')
@@ -696,6 +805,30 @@ def traces_extraction_AGONIA(data_path,agonia_th):
     traces = ola.get_traces()
     return traces.T
 
+def distcorr(X, Y):
+    '''Compute the distance correlation function'''
+
+    X = np.atleast_1d(X)
+    Y = np.atleast_1d(Y)
+    if np.prod(X.shape) == len(X):
+        X = X[:, None]
+    if np.prod(Y.shape) == len(Y):
+        Y = Y[:, None]
+    X = np.atleast_2d(X)
+    Y = np.atleast_2d(Y)
+    n = X.shape[0]
+    if Y.shape[0] != X.shape[0]:
+        raise ValueError('Number of samples must match')
+    a = squareform(pdist(X))
+    b = squareform(pdist(Y))
+    A = a - a.mean(axis=0)[None, :] - a.mean(axis=1)[:, None] + a.mean()
+    B = b - b.mean(axis=0)[None, :] - b.mean(axis=1)[:, None] + b.mean()
+
+    dcov2_xy = (A * B).sum()/float(n * n)
+    dcov2_xx = (A * A).sum()/float(n * n)
+    dcov2_yy = (B * B).sum()/float(n * n)
+    dcor = np.sqrt(dcov2_xy)/np.sqrt(np.sqrt(dcov2_xx) * np.sqrt(dcov2_yy))
+    return dcor
 
 
 
