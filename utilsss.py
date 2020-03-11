@@ -47,7 +47,10 @@ def get_files_names(data_path):
     try:
         median_path = os.path.join(data_path,[data for data in os.listdir(data_path) if data.endswith('.jpg')
                                           and data.startswith('MED')][0])
-        median_projection = np.array(plt.imread(median_path),dtype='uint16')*255
+        if plt.imread(median_path).ndim==3:
+            median_projection = (np.array(plt.imread(median_path),dtype='uint16')*255).mean(axis=2).astype('uint16')
+        else:
+            median_projection = np.array(plt.imread(median_path),dtype='uint16')*255
     except:
         print('Median projection is missing')
 
@@ -567,12 +570,12 @@ def substract_neuropil(data_path,agonia_th,neuropil_pctl,signal_pctl):
     return denoised_traces, neuropil_trace, neuropil_power
 
 
-def event_overlap(caiman_traces,denoised_agonia,n_std,start_nSigma_bsl=7,stop_nSigma_bsl=5):
+def event_overlap(caiman_traces,denoised_agonia,method='dombeck',n_std=2,start_nSigma_bsl=7,stop_nSigma_bsl=5):
     '''binzarize traces (events=1 else=0), then check if events in traces_0 are
     similar to events in traces_1
     Parameters
     ----------
-    method : hard_th or dombeck
+    method : str, 'hard_th' or 'dombeck'
         if hard_th events are everything above mean + n_std*std. If dombeck, uses
         function given by Seba to select events as in paper from dombeck
     n_std : float
@@ -604,7 +607,7 @@ def event_overlap(caiman_traces,denoised_agonia,n_std,start_nSigma_bsl=7,stop_nS
                 TH_1 = M_1+n_std*STD_1
                 trace_1[trace_1<TH_1]=0
                 trace_1[trace_1>=TH_1]=1
-            elif method==dombeck:
+            elif method=='dombeck':
                 (trace_0, _, _, _, _, _) = sut.eventFinder(
                 trace = trace, start_nSigma_bsl = start_nSigma_bsl, stop_nSigma_bsl = stop_nSigma_bsl,
                 FPS = 3, minimumDuration = .3, debugPlot = False)
@@ -623,11 +626,11 @@ def event_overlap(caiman_traces,denoised_agonia,n_std,start_nSigma_bsl=7,stop_nS
         return events_overlap
 
 
-def event_periods_correlation(caiman_trace,ago_denoised,method=dombeck,n_std=2,start_nSigma_bsl=7,stop_nSigma_bsl=5):
+def event_periods_correlation(caiman_trace,ago_denoised,method='dombeck',n_std=2,start_nSigma_bsl=7,stop_nSigma_bsl=5):
     '''select only event periods and correlate traces denoised with different methods
     Parameters
     ----------
-    method : hard_th or dombeck
+    method : str, 'hard_th' or 'dombeck'
         if hard_th events are everything above mean + n_std*std. If dombeck, uses
         function given by Seba to select events as in paper from dombeck
     n_std : float
@@ -653,7 +656,7 @@ def event_periods_correlation(caiman_trace,ago_denoised,method=dombeck,n_std=2,s
                 TH_0 = M_0+n_std*STD_0
                 #trace_1[trace_0<TH_0]=np.nan
                 #trace_0[trace_0<TH_0]=np.nan
-            elif method == dombeck:
+            elif method == 'dombeck':
                 (pos_events_trace_C, _, _, _, _, _) = sut.eventFinder(
                 trace = trace, start_nSigma_bsl = start_nSigma_bsl, stop_nSigma_bsl = stop_nSigma_bsl,
                 FPS = 3, minimumDuration = .3, debugPlot = False)
@@ -793,12 +796,27 @@ def traces_extraction_AGONIA(data_path,agonia_th):
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     Yr, dims, T = cm.load_memmap(fname_new)
     images = np.reshape(Yr.T, [T] + list(dims), order='F')
+    # load Caiman results
+    # cnm = cnmf.load_CNMF(results_caiman_path)
+    # # calculate the centers of the CaImAn factors
+    # centers = np.empty((cnm.estimates.A.shape[1],2))
+    # for i,factor in enumerate(cnm.estimates.A.T):
+    #     centers[i] = center_of_mass(factor.toarray().reshape(cnm.estimates.dims,order='F'))
 
     with open(boxes_path,'rb') as f:
         boxes = pickle.load(f)
         f.close()
     # keep only cells above confidence threshold
     boxes = boxes[boxes[:,4]>agonia_th].astype('int')
+
+    # #delete boxes that do not have a caiman cell inside
+    # k = 0
+    # for cell,box in enumerate(boxes):
+    #     idx_factor = [i for i,center in enumerate(centers) if center[0]>box[1] and
+    #     center[0]<box[3] and center[1]>box[0] and center[1]<box[2]]
+    #     if not idx_factor:
+    #         boxes = np.delete(boxes,cell-k,axis=0)
+    #         k += 1
     ola = Extractor()
     for frame in images:
         ola.extract(frame,boxes)
