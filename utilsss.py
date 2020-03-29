@@ -1,13 +1,16 @@
 import os
 import sys
-os.chdir('/home/pedro/keras-retinanet')
+#os.chdir('/home/pedro/keras-retinanet')
+os.chdir('/home/pedro/keras-retinanet/AGOnIA_release')
 import pickle
 import warnings
 import numpy as np
 import pandas as pd
 import caiman as cm
 import holoviews as hv
-from AGOnIA import AGOnIA
+from skimage import io
+#from AGOnIA import AGOnIA
+import AGOnIA2 as ag
 from holoviews import opts
 from holoviews import streams
 import matplotlib.pyplot as plt
@@ -111,7 +114,9 @@ def agonia_detect(data_path,data_name,median_projection,multiplier=1,th=0.05):
         threshold for detection confidence for each box, default is 0.05.
         It is recommended to detect using the default which is the minimun and
         filter afterwards'''
-    det = AGOnIA('L4+CA1_800.h5',True)
+    #det = AGOnIA('L4+CA1_800.h5',True)
+    #ROIs = det.detect(median_projection,threshold=th,multiplier=multiplier)
+    det = ag.Detector('/home/pedro/keras-retinanet/AGOnIA_release/7934_tf13',True)
     ROIs = det.detect(median_projection,threshold=th,multiplier=multiplier)
     pickle.dump( ROIs, open( os.path.join(data_path,os.path.splitext(data_name[0])[0] + '_boxes.pkl'), "wb" ) )
 
@@ -161,7 +166,7 @@ def seeded_Caiman_wAgonia(data_path,opts,agonia_th):
     cnm_seeded = cnmf.CNMF(n_processes, params=opts, dview=dview, Ain=Ain)
     try:
         cnm_seeded.fit(images)
-        cnm_seeded.estimates.detrend_df_f(quantileMin=50,frames_window=2000,detrend_only=False)
+        cnm_seeded.estimates.detrend_df_f(quantileMin=50,frames_window=750,detrend_only=False)
         cnm_seeded.save(os.path.join(data_path,os.path.splitext(data_name[0])[0] + '_analysis_results.hdf5'))
     except:
         print('Tenemos un problema...')
@@ -334,8 +339,9 @@ def plot_AGonia_boxes(data_path,Score,box_idx):
     Holoviews image to feed to dynamic map, selected cell is indicated with green square'''
 
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
-    Yr, dims, T = cm.load_memmap(fname_new)
-    images = np.reshape(Yr.T, [T] + list(dims), order='F')
+    #Yr, dims, T = cm.load_memmap(fname_new)
+    #images = np.reshape(Yr.T, [T] + list(dims), order='F')
+    images = io.imread(os.path.join(data_path,data_name[0]))
     with open(boxes_path,'rb') as f:
         boxes = pickle.load(f)
         f.close()
@@ -345,7 +351,11 @@ def plot_AGonia_boxes(data_path,Score,box_idx):
     img = hv.Image(median_projection,bounds=(0,0,median_projection.shape[1],median_projection.shape[0]
                                                           )).options(cmap='gray')
 
-    box_trace = images[:,boxes[box_idx,1]:boxes[box_idx,3],boxes[box_idx,0]:boxes[box_idx,2]].mean(axis=(1,2))
+    #box_trace = images[:,boxes[box_idx,1]:boxes[box_idx,3],boxes[box_idx,0]:boxes[box_idx,2]].mean(axis=(1,2))
+    ola = Extractor()
+    for frame in images:
+        ola.extract(frame,[boxes[box_idx]])
+    box_trace = ola.get_traces().squeeze()
     box_square = hv.Path([hv.Bounds(tuple([boxes[box_idx,0],median_projection.shape[0]-boxes[box_idx,1],boxes[box_idx,2],
                             median_projection.shape[0]-boxes[box_idx,3]]))]).options(color='lime')
     return ((img*roi_bounds*box_square).opts(width=600,height=600)+hv.Curve((np.linspace(0,len(box_trace)-1,
@@ -722,12 +732,26 @@ def signal_to_noise(data_path,agonia_th):
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     Yr, dims, T = cm.load_memmap(fname_new)
     images = np.reshape(Yr.T, [T] + list(dims), order='F')
+    # load Caiman results
+    cnm = cnmf.load_CNMF(results_caiman_path)
+    # calculate the centers of the CaImAn factors
+    centers = np.empty((cnm.estimates.A.shape[1],2))
+    for i,factor in enumerate(cnm.estimates.A.T):
+        centers[i] = center_of_mass(factor.toarray().reshape(cnm.estimates.dims,order='F'))
 
     with open(boxes_path,'rb') as f:
         boxes = pickle.load(f)
         f.close()
-    # keep only cells above confidence threshold
+        # keep only cells above confidence threshold
     boxes = boxes[boxes[:,4]>agonia_th].astype('int')
+
+    k = 0
+    for cell,box in enumerate(boxes):
+        idx_factor = [i for i,center in enumerate(centers) if center[0]>box[1] and
+        center[0]<box[3] and center[1]>box[0] and center[1]<box[2]]
+        if not idx_factor:
+            boxes = np.delete(boxes,cell-k,axis=0)
+            k += 1
 
     stnr = np.zeros(boxes.shape[0])
     for cell,box in enumerate(boxes):
@@ -797,11 +821,11 @@ def traces_extraction_AGONIA(data_path,agonia_th):
     Yr, dims, T = cm.load_memmap(fname_new)
     images = np.reshape(Yr.T, [T] + list(dims), order='F')
     # load Caiman results
-    # cnm = cnmf.load_CNMF(results_caiman_path)
-    # # calculate the centers of the CaImAn factors
-    # centers = np.empty((cnm.estimates.A.shape[1],2))
-    # for i,factor in enumerate(cnm.estimates.A.T):
-    #     centers[i] = center_of_mass(factor.toarray().reshape(cnm.estimates.dims,order='F'))
+    cnm = cnmf.load_CNMF(results_caiman_path)
+    # calculate the centers of the CaImAn factors
+    centers = np.empty((cnm.estimates.A.shape[1],2))
+    for i,factor in enumerate(cnm.estimates.A.T):
+        centers[i] = center_of_mass(factor.toarray().reshape(cnm.estimates.dims,order='F'))
 
     with open(boxes_path,'rb') as f:
         boxes = pickle.load(f)
@@ -810,13 +834,13 @@ def traces_extraction_AGONIA(data_path,agonia_th):
     boxes = boxes[boxes[:,4]>agonia_th].astype('int')
 
     # #delete boxes that do not have a caiman cell inside
-    # k = 0
-    # for cell,box in enumerate(boxes):
-    #     idx_factor = [i for i,center in enumerate(centers) if center[0]>box[1] and
-    #     center[0]<box[3] and center[1]>box[0] and center[1]<box[2]]
-    #     if not idx_factor:
-    #         boxes = np.delete(boxes,cell-k,axis=0)
-    #         k += 1
+    k = 0
+    for cell,box in enumerate(boxes):
+        idx_factor = [i for i,center in enumerate(centers) if center[0]>box[1] and
+        center[0]<box[3] and center[1]>box[0] and center[1]<box[2]]
+        if not idx_factor:
+            boxes = np.delete(boxes,cell-k,axis=0)
+            k += 1
     ola = Extractor()
     for frame in images:
         ola.extract(frame,boxes)
