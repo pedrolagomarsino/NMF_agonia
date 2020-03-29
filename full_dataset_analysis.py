@@ -26,14 +26,14 @@ sys.path.insert(1, '/home/pedro/Work/Hippocampus/code')
 import to_Pedro as sut
 
 #PATH = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/L4/full_dataset'
-PATH = '/media/pedro/DATA_BUCKET/PNAS_RAW_tifs'
-for path in os.listdir(PATH)[14:]:
+PATH = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/neurofinder'
+for path in next(os.walk(PATH))[1][1:]:
     print('starting analysis of: '+path)
     data_path = os.path.join(PATH,path)
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
 
     ## params
-    fr = 30                    # imaging rate in frames per second (data obtained from file ....)
+    fr = 7.5                    # imaging rate in frames per second (data obtained from file ....)
     decay_time = 0.65           # length of a typical transient in seconds (this is the value given by Marco Brondi, which is different from the one in the original notebook)
 
     # motion correction parameters
@@ -102,10 +102,10 @@ for path in os.listdir(PATH)[14:]:
     if not boxes_path:
         ## detect with AGOnIA
         data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
-        ut.agonia_detect(data_path,data_name,median_projection,multiplier=2.3)
+        ut.agonia_detect(data_path,data_name,median_projection,multiplier=2.)
 
 
-    agonia_th = .35
+    agonia_th = .3
     ut.seeded_Caiman_wAgonia(data_path,opts,agonia_th=agonia_th)
 
 
@@ -115,16 +115,17 @@ seeded = cnmf.load_CNMF(results_caiman_path)
 seeded.estimates.nb_view_components(img=median_projection,denoised_color='red')
 
 #datasets paths
-PATH = '/media/pedro/DATA_BUCKET/PNAS_RAW_tifs/'
+#PATH = '/media/pedro/DATA_BUCKET/PNAS_RAW_tifs/'
 datasets = {'L4':{'agonia_th' : .2},
             'CA1':{'agonia_th' : .35},
             'ABO':{'agonia_th' : .4},
-            'Sofroniew':{'agonia_th' : .2},
+            'neurofinder':{'agonia_th' : .3},
             'Svoboda':{'agonia_th' : .2},
             'VPM':{'agonia_th' : .35}
             }
+datasets = {'neurofinder':{'agonia_th' : .3}}
 # if the analysis has already been done there should be a pickle with the analysis in a dictionary
-datasets = pickle.load(open(os.path.join(PATH,'figure_dict.pkl'),'rb'))
+datasets = pickle.load(open(os.path.join(PATH,'full_data_figure_dict.pkl'),'rb'))
 names = []
 for key in datasets.keys():
     if key!='Sofroniew':
@@ -137,9 +138,10 @@ for key in datasets.keys():
 for key in datasets.keys():
     if key!='Sofroniew':
         print(key)
-        key ='ABO'
+        key ='neurofinder'
         full_data_path = PATH#os.path.join(PATH,key,'full_dataset')
-        for video in os.listdir(full_data_path)[1:]:
+        #for video in os.listdir(full_data_path)[1:]:
+        for video in next(os.walk(full_data_path))[1]:
             print(video)
             data_path = os.path.join(full_data_path,video)
             data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
@@ -160,14 +162,14 @@ fig,ax = plt.subplots(figsize=(8,5))
 plt.title('AgoniaVsCaiman Trace Correlations',fontsize=15)
 plt.boxplot(corr_avsc)
 #plt.ylim([0,1])
-plt.savefig(os.path.join(full_data_path,'ABO_correlation_agonia_vs_Caiman.png'),format='png')
+#plt.savefig(os.path.join(full_data_path,'CA1_correlation_agonia_vs_Caiman.png'),format='png')
 plt.show()
 
 fig,ax = plt.subplots(figsize=(5,5))
 plt.title('AgoniaVsCaiman Trace Correlations',fontsize=15)
 plt.boxplot(corravsc_all)
 ax.set_xticklabels([key])
-plt.savefig(os.path.join(full_data_path,'ABO_all_correlation_agonia_vs_Caiman.png'),format='png')
+plt.savefig(os.path.join(full_data_path,'CA1_all_correlation_agonia_vs_Caiman.png'),format='png')
 plt.show()
 
 ##########################################
@@ -191,11 +193,11 @@ legend = []
 for exp in list(datasets[key])[1:]:
     plt.plot(np.log(datasets[key][exp]['sig_to_noise']),datasets[key][exp]['corrs_comp_denoised'],'.')
     legend.append(exp)
-plt.legend(legend)
+#plt.legend(legend,loc ='lower right')
 #plt.ylim([0,1.02])
 plt.xlabel('log(Signal to noise ratio)')
 plt.ylabel('CaimanVSAgonia trace correlation')
-plt.savefig(os.path.join(full_data_path,'ABO_STNR_VS_Correlation.png'),format='png')
+#plt.savefig(os.path.join(full_data_path,'CA1_STNR_VS_Correlation.png'),format='png')
 plt.show()
 ##########################################
 ### local vs global noise correlations ###
@@ -204,42 +206,83 @@ plt.show()
 for video in next(os.walk(full_data_path))[1]:
     print(video)
     data_path = os.path.join(full_data_path,video)
-    datasets['L4'][video]['localVSglobal_neuropil_corr'] = ut.localvsglobal_neuropil(data_path,datasets['L4']['agonia_th'])
+    datasets[key][video]['localVSglobal_neuropil_corr'] = ut.localvsglobal_neuropil(data_path,datasets[key]['agonia_th'])
+
 lVSg = []
 all_lVSg = np.empty(0)
-for exp in list(datasets['L4'])[1:]:
-    lVSg.append(datasets['L4'][exp]['localVSglobal_neuropil_corr'])
-    all_lVSg = np.append(all_lVSg,datasets['L4'][exp]['localVSglobal_neuropil_corr'])
+for exp in list(datasets[key])[1:]:
+    lVSg.append(datasets[key][exp]['localVSglobal_neuropil_corr'])
+    all_lVSg = np.append(all_lVSg,datasets[key][exp]['localVSglobal_neuropil_corr'])
 fig,ax = plt.subplots(figsize=(8,5))
 plt.title('LocalvsGlobal noise Correlations',fontsize=15)
 plt.boxplot(lVSg)
-ax.set_xticklabels(legend)
-plt.ylim([0,1])
-plt.savefig(os.path.join(full_data_path,'L4_localVSglobal_neuropil_corr.png'),format='png')
+#ax.set_xticklabels(legend)
+#plt.ylim([0,1])
+#plt.savefig(os.path.join(full_data_path,'neurofinder_localVSglobal_neuropil_corr.png'),format='png')
 plt.show()
 
 fig,ax = plt.subplots(figsize=(5,5))
-plt.title('L4 LocalvsGlobal noise Correlations',fontsize=15)
+plt.title('CA1 LocalvsGlobal noise Correlations',fontsize=15)
 plt.boxplot(all_lVSg)
 plt.ylim([0,1])
-plt.savefig(os.path.join(full_data_path,'L4_all_localVSglobal_neuropil_corr.png'),format='png')
+#plt.savefig(os.path.join(full_data_path,'CA1_all_localVSglobal_neuropil_corr.png'),format='png')
 plt.show()
 
 pickle.dump(datasets,open(os.path.join(PATH,"full_data_figure_dict.pkl"),"wb"))
 
+##########################################
+########## All datasets figure ###########
+##########################################
+PATH = '/media/pedro/DATAPART1/AGOnIA/datasets_figure'
+results = pickle.load(open(os.path.join(PATH,'complete_figure_dict.pkl'),'rb'))
+#correlation figure
+corravsc_all = []
+for key in results.keys():
+    corr = np.empty(0)
+    for exp in list(results[key])[1:]:
+        corr = np.append(corr,results[key][exp]['corrs_comp_denoised'])
+    corravsc_all.append(corr)
 
+fig,ax = plt.subplots(figsize=(8,5))
+plt.title('AgoniaVsCaiman Trace Correlations',fontsize=15)
+plt.boxplot(corravsc_all)
+ax.set_xticklabels(results.keys())
+plt.savefig(os.path.join(PATH,'Correlation_agonia_vs_Caiman.png'),format='png')
+plt.show()
+# correlation vs signal to noise ratio figure
+stnr_all = []
+for key in results.keys():
+    stnr = np.empty(0)
+    for exp in list(results[key])[1:]:
+        stnr = np.append(stnr,results[key][exp]['sig_to_noise'])
+    stnr_all.append(stnr)
+plt.figure(figsize=(8,5))
+legend = []
+for i,key in enumerate(results.keys()):
+    plt.plot(np.log(stnr_all[i]),corravsc_all[i],'.',alpha=.5)
+    legend.append(key)
+plt.legend(legend)#,loc ='lower right')
+#plt.ylim([0,1.02])
+plt.xlabel('log(Signal to noise ratio)')
+plt.ylabel('CaimanVSAgonia trace correlation')
+plt.savefig(os.path.join(PATH,'STNR_VS_Correlation.png'),format='png')
+plt.show()
 
-
-
-
-
-
-
-
-
-
-
-
+#local vs global correlations
+all_lVSg = []
+for key in results.keys():
+    lvsg = np.empty(0)
+    for exp in list(results[key])[1:]:
+        lvsg = np.append(lvsg,results[key][exp]['localVSglobal_neuropil_corr'])
+    all_lVSg.append(lvsg)
+fig,ax = plt.subplots(figsize=(8,5))
+plt.title('LocalvsGlobal noise Correlations',fontsize=15)
+plt.boxplot(all_lVSg)
+ax.set_xticklabels(results.keys())
+plt.savefig(os.path.join(PATH,'LocalVSglobal_neuropil_corr.png'),format='png')
+plt.show()
+results['CA1']['agonia_th']
+#
 
 
 

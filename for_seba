@@ -20,11 +20,13 @@ with warnings.catch_warnings():
     import utilsss as ut
 hv.extension('matplotlib')
 
-data_path = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/prueba'
+#data_path = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/prueba'
+data_path = '/media/pedro/DATAPART1/Sara/2P_VR_Data/segmentation_test/room4'
+data_path = '/home/pedro/Desktop'
 data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
 
 ## params for CaImAn
-fr = 3.026                    # imaging rate in frames per second (data obtained from file ....)
+fr = 30#3.026                    # imaging rate in frames per second (data obtained from file ....)
 decay_time = 0.64           # length of a typical transient in seconds (this is the value given by Marco Brondi, which is different from the one in the original notebook)
 
 # motion correction parameters
@@ -32,7 +34,7 @@ strides = (48, 48)          # start a new patch for pw-rigid motion correction e
 overlaps = (24, 24)         # overlap between patches (size of patch strides+overlaps)
 max_shifts = (6,6)          # maximum allowed rigid shifts (in pixels)
 max_deviation_rigid = 3     # maximum shifts deviation allowed for patch with respect to rigid shifts
-pw_rigid = True             # flag for performing non-rigid motion correction
+pw_rigid = False             # flag for performing non-rigid motion correction
 
 # parameters for source extraction and deconvolution
 p = 0                       # order of the autoregressive system
@@ -82,7 +84,7 @@ opts = params.CNMFParams(params_dict=opts_dict)
 
 if not boxes_path:
     ## detect with AGOnIA
-    ut.agonia_detect(data_path,data_name,median_projection,multiplier=1)
+    ut.agonia_detect(data_path,data_name,median_projection,multiplier=2.5)
 
 if not fname_new:
     #do mmaping
@@ -92,7 +94,7 @@ if not fname_new:
 ut.memmap_movie(fnames,load=False)
 
 #run seeded agonia
-ut.seeded_Caiman_wAgonia(data_path,opts,agonia_th=.2)
+ut.seeded_Caiman_wAgonia(data_path,opts,agonia_th=.1)
 
 #load results and plot components
 data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
@@ -101,31 +103,31 @@ seeded = cnmf.load_CNMF(results_caiman_path)
 seeded.estimates.nb_view_components(img=median_projection,denoised_color='red')
 
 #to visualize factors and boxes use the notebook /home/pedro/Work/AGOnIA/code/detection_plots.ipynb
+seeded.estimates.C.shape
 
 
+traces = ut.traces_extraction_AGONIA(data_path,.15)
+plt.plot(traces[2])
 
 
+#single_movie = cm.load('/media/pedro/DATAPART1/Sara/2P_VR_Data/segmentation_test/memmap__d1_256_d2_256_d3_1_order_C_frames_750_.mmap')
+corrected = cm.load('/media/pedro/DATAPART1/Sara/2P_VR_Data/segmentation_test/room1/TSeries-12142019-1144-2516_rig__d1_256_d2_256_d3_1_order_F_frames_750_.mmap')
+corrected.play()
+corrected.save('/media/pedro/DATAPART1/Sara/2P_VR_Data/segmentation_test/room1/caiman_mc.tif')
+plt.imshow(corrected.mean(axis=0))
+plt.imshow(single_movie.mean(axis=0))
 
 
+VR = pd.read_csv('/media/pedro/DATAPART1/Sara/2P_VR_Data/ROOM_4/2020Feb10/0002/180cm_ID_0002_152423.csv')
+VR.head()
+VR.index
+VR.columns
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+plt.plot(VR['# x.pos'])
+plt.figure(figsize=(16,4))
+plt.plot(VR[' time'],VR['# x.pos'])
+plt.figure(figsize=(16,4))
+plt.plot(VR.loc[20000:21000][' microscopeSync'])
 
 
 
