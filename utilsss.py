@@ -139,7 +139,7 @@ def seeded_Caiman_wAgonia(data_path,opts,agonia_th):
     if 'dview' in locals():
         cm.stop_server(dview=dview)
     c, dview, n_processes = cm.cluster.setup_cluster(
-    backend='local', n_processes=None, single_thread=False)
+    backend='local', n_processes=12, single_thread=False)
 
     # Load the boxes in the pickle file into the ROIs arrays.
     with open(boxes_path,'rb') as f:
@@ -165,8 +165,10 @@ def seeded_Caiman_wAgonia(data_path,opts,agonia_th):
     #Run analysis
     cnm_seeded = cnmf.CNMF(n_processes, params=opts, dview=dview, Ain=Ain)
     try:
+        print('initiating fit')
         cnm_seeded.fit(images)
-        cnm_seeded.estimates.detrend_df_f(quantileMin=50,frames_window=750,detrend_only=False)
+        print('saving results')
+        #cnm_seeded.estimates.detrend_df_f(quantileMin=50,frames_window=750,detrend_only=False)
         cnm_seeded.save(os.path.join(data_path,os.path.splitext(data_name[0])[0] + '_analysis_results.hdf5'))
     except:
         print('Tenemos un problema...')
@@ -496,7 +498,7 @@ def memmap_movie(fnames,load=True):
     if 'dview' in locals():
         cm.stop_server(dview=dview)
     c, dview, n_processes = cm.cluster.setup_cluster(
-    backend='local', n_processes=None, single_thread=False)
+    backend='local', n_processes=12, single_thread=False)
 
     fname_new = cm.save_memmap(fnames, base_name='memmap_', order='C',
                            border_to_0=0, dview=dview) # exclude borders
@@ -721,7 +723,7 @@ def localvsglobal_neuropil(data_path,agonia_th):
 
     return local_global_corr
 
-def signal_to_noise(data_path,agonia_th):
+def signal_to_noise(data_path,agonia_th,ground_truth=None):
     '''Calculate signal to noise ratio of each box
     Parameters
     ----------
@@ -753,15 +755,26 @@ def signal_to_noise(data_path,agonia_th):
             boxes = np.delete(boxes,cell-k,axis=0)
             k += 1
 
-    stnr = np.zeros(boxes.shape[0])
+    if ground_truth is not None:
+        stats = ag.compute_stats(np.array(ground_truth), boxes, iou_threshold=0.5)
+    stnr = []#np.zeros(boxes.shape[0])
     for cell,box in enumerate(boxes):
-        box_trace = images[:,box[1]:box[3],box[0]:box[2]]
-        mean_box = box_trace.mean(axis=(1,2))
-        max_trace = max(mean_box)
-        noise_box = np.std(box_trace[box_trace<np.percentile(box_trace,25)])
-        stnr[cell] = max_trace/noise_box
+        if ground_truth is not None:
+            if cell in stats['true_positives'][:,1]:
+                box_trace = images[:,box[1]:box[3],box[0]:box[2]]
+                mean_box = box_trace.mean(axis=(1,2))
+                max_trace = max(mean_box)
+                noise_box = np.std(box_trace[box_trace<np.percentile(box_trace,25)])
+                stnr.append(max_trace/noise_box)
+        else:
+            box_trace = images[:,box[1]:box[3],box[0]:box[2]]
+            mean_box = box_trace.mean(axis=(1,2))
+            max_trace = max(mean_box)
+            noise_box = np.std(box_trace[box_trace<np.percentile(box_trace,25)])
+            stnr.append(max_trace/noise_box)
 
-    return stnr
+
+    return np.array(stnr)
 
 def signal_to_noise_pixel(data_path,agonia_th):
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
@@ -832,8 +845,6 @@ def traces_extraction_AGONIA(data_path,agonia_th):
         f.close()
     # keep only cells above confidence threshold
     boxes = boxes[boxes[:,4]>agonia_th].astype('int')
-
-    # #delete boxes that do not have a caiman cell inside
     k = 0
     for cell,box in enumerate(boxes):
         idx_factor = [i for i,center in enumerate(centers) if center[0]>box[1] and
