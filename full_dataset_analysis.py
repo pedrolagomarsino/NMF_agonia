@@ -27,13 +27,13 @@ hv.extension('matplotlib')
 sys.path.insert(1, '/home/pedro/Work/Hippocampus/code')
 import to_Pedro as sut
 
-PATH = '/media/pedro/DATAPART1/AGOnIA/neurofinder_test'
-luca_params = pd.read_csv('/media/pedro/DATAPART1/AGOnIA/params/NEU ALL.txt',sep=" ")
+full_data_path = '/media/pedro/DATAPART1/AGOnIA/PNAS_RAW_tifs'
+luca_params = pd.read_csv('/media/pedro/DATAPART1/AGOnIA/params/ABOb V3_log.txt',sep=" ")
 luca_params.set_index('name',inplace=True)
-#PATH = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/neurofinder'
-for path in next(os.walk(PATH))[1]:
+#full_data_path = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/neurofinder'
+for path in next(os.walk(full_data_path))[1]:
     print('starting analysis of: '+path)
-    data_path = os.path.join(PATH,path)
+    data_path = os.path.join(full_data_path,path)
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
     multiplier = np.float(luca_params.loc[path+'.bmp']['mul'])
     agonia_th = np.float(luca_params.loc[path+'.bmp'].sco)
@@ -113,32 +113,33 @@ for path in next(os.walk(PATH))[1]:
     if not results_caiman_path:
         ut.seeded_Caiman_wAgonia(data_path,opts,agonia_th=agonia_th)
 
-# Check results 
+# Check results
 data_path = '/media/pedro/DATAPART1/AGOnIA/PNAS_RAW_tifs/539670003'
+data_path = '/media/pedro/DATAPART1/AGOnIA/CA1/Ch2/'+next(os.walk(full_data_path))[1][0]
 data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
 seeded = cnmf.load_CNMF(results_caiman_path)
 seeded.estimates.nb_view_components(img=median_projection,denoised_color='red')
 
 
 #datasets paths
-full_data_path = PATH#os.path.join(PATH,key,'full_dataset')
-anotations_all = pd.read_csv('/media/pedro/DATAPART1/AGOnIA/TestSets_ENH/NEU_all.csv')
+anotations_all = pd.read_csv('/media/pedro/DATAPART1/AGOnIA/TestSets_ENH/ABOb_V3/test.csv')
 anotations_all.columns = ['experiment','xmin','ymin','xmax','ymax','id']
-only_true_positives = True
+only_true_positives = False
 
 # if the analysis has already been done there should be a pickle with the analysis in a dictionary
-key = 'neurofinder_test' #'L4'
+#possible keys are: ['CA1_Ch1','CA1_Ch2','L4','neurofinder','neurofinder_test','ABO']
+key = 'ABO' #'L4'
 if only_true_positives:
-    if os.path.exists(os.path.join(PATH,key+'analysis_results_only_truepos.pkl')):
-        datasets = pickle.load(open(os.path.join(PATH,key+'analysis_results_only_truepos.pkl'),'rb'))
+    if os.path.exists(os.path.join(full_data_path,key+'analysis_results_only_truepos.pkl')):
+        datasets = pickle.load(open(os.path.join(full_data_path,key+'analysis_results_only_truepos.pkl'),'rb'))
     else:
         datasets = {key:{}}
 else:
-    if os.path.exists(os.path.join(PATH,key+'analysis_results.pkl')):
-        datasets = pickle.load(open(os.path.join(PATH,key+'analysis_results.pkl'),'rb'))
+    if os.path.exists(os.path.join(full_data_path,key+'analysis_results.pkl')):
+        datasets = pickle.load(open(os.path.join(full_data_path,key+'analysis_results.pkl'),'rb'))
     else:
         datasets = {key:{}}
-
+datasets.keys()
 ##########################################
 ########### correlation figure ###########
 ##########################################
@@ -201,7 +202,6 @@ for exp in list(datasets[key]):
     corr_avsc.append(datasets[key][exp]['corrs_comp_denoised'])
     labels.append(exp[-4:])
 
-
 fig,ax = plt.subplots(figsize=(8,5))
 plt.title('AgoniaVsCaiman Trace Correlations',fontsize=15)
 plt.boxplot(corr_avsc)
@@ -237,7 +237,9 @@ for video in next(os.walk(full_data_path))[1]:
         ground_truth=None
     data_path = os.path.join(full_data_path,video)
     agonia_th = np.float(luca_params.loc[video+'.bmp'].sco)
-    datasets[key][video]['sig_to_noise'] = ut.signal_to_noise(data_path,agonia_th,ground_truth,neurofinder=True)
+    datasets[key][video]['sig_to_noise'] = ut.signal_to_noise(data_path,agonia_th,ground_truth,neurofinder=False)
+
+#datasets[key]['531006860']['sig_to_noise'] = np.delete(datasets[key]['531006860']['sig_to_noise'],66)
 
 stnr = np.empty(0)
 corr = np.empty(0)
@@ -252,7 +254,7 @@ for exp in list(datasets[key]):
     #if exp!='neurofinder.02.00' and exp!='neurofinder.02.00.test' and exp!='neurofinder.02.01' and exp!='neurofinder.02.01.test':
     plt.plot(np.log(datasets[key][exp]['sig_to_noise']),datasets[key][exp]['corrs_comp_denoised'],'.')
     legend.append(exp[-10:])
-plt.legend(legend,loc ='lower right')
+#plt.legend(legend,loc ='lower right')
 plt.xlabel('log(Signal to noise ratio)')
 plt.ylabel('CaimanVSAgonia trace correlation')
 
@@ -260,7 +262,7 @@ plt.ylabel('CaimanVSAgonia trace correlation')
 if only_true_positives:
     plt.savefig(os.path.join(full_data_path,key+'_STNR_VS_Correlation_only_truepos.png'),format='png')
 else:
-    plt.savefig(os.path.join(full_data_path,key+'_STNR_VS_Correlation.png'),format='png')
+    plt.savefig(os.path.join(full_data_path,key+'_STNR_VS_Correlation_nolegend.png'),format='png')
 plt.show()
 ##########################################
 ### local vs global noise correlations ###
@@ -293,9 +295,10 @@ plt.show()
 
 #save results
 if only_true_positives:
-    pickle.dump(datasets,open(os.path.join(PATH,key+"analysis_results_only_truepos.pkl"),"wb"))
+    pickle.dump(datasets,open(os.path.join(full_data_path,key+"analysis_results_only_truepos.pkl"),"wb"))
 else:
-    pickle.dump(datasets,open(os.path.join(PATH,key+"analysis_results.pkl"),"wb"))
+    pickle.dump(datasets,open(os.path.join(full_data_path,key+"analysis_results.pkl"),"wb"))
+
 
 
 

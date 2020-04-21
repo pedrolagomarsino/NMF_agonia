@@ -440,7 +440,8 @@ def plot_seeded_traces(data_path,cnm,Score,x,y,centers):
         idx_factor = [idx_factor[np.argmin([np.linalg.norm([(boxes[box_idx,3]-boxes[box_idx,1])/2,
                                 (boxes[box_idx,2]-boxes[box_idx,0])/2]-c) for c in centers[idx_factor]])]]
 
-    caiman_df_f = cnm.estimates.F_dff[idx_factor[0]]
+    #caiman_df_f = cnm.estimates.F_dff[idx_factor[0]]
+    caiman_df_f = cnm.estimates.C[idx_factor[0]]
     denoised_trace = np.max(caiman_df_f)*(cnm.estimates.C[idx_factor[0]]-(np.min(cnm.estimates.C[idx_factor[0]])
                     +np.mean(caiman_df_f)))/(np.max(cnm.estimates.C[idx_factor[0]])-np.min(cnm.estimates.C[idx_factor[0]]))
     #return hv.Curve((np.linspace(0,len(caiman_df_f)-1,len(caiman_df_f)),caiman_df_f),'Frame','DF/F CaImAn')*hv.Curve(denoised_trace)
@@ -723,7 +724,7 @@ def localvsglobal_neuropil(data_path,agonia_th):
 
     return local_global_corr
 
-def signal_to_noise(data_path,agonia_th,ground_truth=None):
+def signal_to_noise(data_path,agonia_th,ground_truth=None,neurofinder=False):
     '''Calculate signal to noise ratio of each box
     Parameters
     ----------
@@ -758,20 +759,44 @@ def signal_to_noise(data_path,agonia_th,ground_truth=None):
     if ground_truth is not None:
         stats = ag.compute_stats(np.array(ground_truth), boxes, iou_threshold=0.5)
     stnr = []#np.zeros(boxes.shape[0])
-    for cell,box in enumerate(boxes):
-        if ground_truth is not None:
-            if cell in stats['true_positives'][:,1]:
+    if neurofinder:
+        for cell,box in enumerate(boxes):
+            if ground_truth is not None:
+                if cell in stats['true_positives'][:,1]:
+                    box_trace = images[:,box[1]:box[3],box[0]:box[2]]
+                    box_trace_arr = np.array(images[:,box[1]:box[3],box[0]:box[2]])
+                    box_trace_arr_cut = box_trace_arr.copy()
+                    box_trace_arr_cut[box_trace<30] = np.nan
+                    mean_box = np.nanmean(box_trace_arr_cut,axis=(1,2))
+                    trace_flat = box_trace[box_trace>30]
+                    noise_box = np.std(trace_flat[trace_flat<np.percentile(trace_flat,25)])
+                    amp_trace = max(mean_box)-min(mean_box)
+                    stnr.append(amp_trace/noise_box)
+            else:
+                box_trace = images[:,box[1]:box[3],box[0]:box[2]]
+                box_trace_arr = np.array(images[:,box[1]:box[3],box[0]:box[2]])
+                box_trace_arr_cut = box_trace_arr.copy()
+                box_trace_arr_cut[box_trace<30] = np.nan
+                mean_box = np.nanmean(box_trace_arr_cut,axis=(1,2))
+                trace_flat = box_trace[box_trace>30]
+                noise_box = np.std(trace_flat[trace_flat<np.percentile(trace_flat,25)])
+                amp_trace = max(mean_box)-min(mean_box)
+                stnr.append(amp_trace/noise_box)
+    else:
+        for cell,box in enumerate(boxes):
+            if ground_truth is not None:
+                if cell in stats['true_positives'][:,1]:
+                    box_trace = images[:,box[1]:box[3],box[0]:box[2]]
+                    mean_box = box_trace.mean(axis=(1,2))
+                    amp_trace = max(mean_box)-min(mean_box)
+                    noise_box = np.std(box_trace[box_trace<np.percentile(box_trace[box_trace!=0],25)])
+                    stnr.append(amp_trace/noise_box)
+            else:
                 box_trace = images[:,box[1]:box[3],box[0]:box[2]]
                 mean_box = box_trace.mean(axis=(1,2))
-                max_trace = max(mean_box)
-                noise_box = np.std(box_trace[box_trace<np.percentile(box_trace,25)])
-                stnr.append(max_trace/noise_box)
-        else:
-            box_trace = images[:,box[1]:box[3],box[0]:box[2]]
-            mean_box = box_trace.mean(axis=(1,2))
-            max_trace = max(mean_box)
-            noise_box = np.std(box_trace[box_trace<np.percentile(box_trace,25)])
-            stnr.append(max_trace/noise_box)
+                amp_trace = max(mean_box)-min(mean_box)
+                noise_box = np.std(box_trace[box_trace<np.percentile(box_trace[box_trace!=0],25)])
+                stnr.append(amp_trace/noise_box)
 
 
     return np.array(stnr)
@@ -856,6 +881,7 @@ def traces_extraction_AGONIA(data_path,agonia_th):
     for frame in images:
         ola.extract(frame,boxes)
     traces = ola.get_traces()
+    ola.pool.terminate()
     return traces.T
 
 def distcorr(X, Y):
