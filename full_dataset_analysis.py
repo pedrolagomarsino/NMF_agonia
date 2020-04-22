@@ -8,7 +8,6 @@ sys.path.insert(1,'/home/pedro/keras-retinanet/AGOnIA_release')
 import AGOnIA2 as ag
 import numpy as np
 import pandas as pd
-import caiman as cm
 import seaborn as sns
 import holoviews as hv
 import matplotlib.pyplot as plt
@@ -22,6 +21,7 @@ with warnings.catch_warnings():
     warnings.filterwarnings("ignore",category=DeprecationWarning)
     warnings.filterwarnings("ignore",category=FutureWarning)
     import utilsss as ut
+    import caiman as cm
 hv.extension('matplotlib')
 
 sys.path.insert(1, '/home/pedro/Work/Hippocampus/code')
@@ -139,7 +139,7 @@ else:
         datasets = pickle.load(open(os.path.join(full_data_path,key+'analysis_results.pkl'),'rb'))
     else:
         datasets = {key:{}}
-datasets.keys()
+datasets[key].keys()
 ##########################################
 ########### correlation figure ###########
 ##########################################
@@ -299,9 +299,40 @@ if only_true_positives:
 else:
     pickle.dump(datasets,open(os.path.join(full_data_path,key+"analysis_results.pkl"),"wb"))
 
+######################################################
+### AGonia vs Caiman background trace correlations ###
+######################################################
+
+PATH = '/media/pedro/DATAPART1/AGOnIA'
+background_corr_all = []
+order = ['CA1_Ch1','CA1_Ch2','L4','neurofinder','neurofinder_test','ABO']
+
+background_corr = np.empty(len(next(os.walk(full_data_path))[1]))
+for i,video in enumerate(next(os.walk(full_data_path))[1]):
+    print(video)
+    data_path = os.path.join(full_data_path,video)
+    data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
+    agonia_th = np.float(luca_params.loc[video+'.bmp'].sco)
+    seeded = cnmf.load_CNMF(results_caiman_path)
+    _,neuropil_trace = ut.localvsglobal_neuropil(data_path,agonia_th,only_neuropil_trace=True)
+    background_corr[i] = np.corrcoef(neuropil_trace,seeded.estimates.f[0])[0,1]
+background_corr_all.append(background_corr)
+pickle.dump(background_corr_all,open(os.path.join(PATH,"bg_AGvsCai_correlation.pkl"),"wb"))
 
 
-
+####################################################
+### Cross correlation between cells and neuropil ###
+####################################################
+for video in next(os.walk(full_data_path))[1]:
+    print(video)
+    data_path = os.path.join(full_data_path,video)
+    data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
+    agonia_th = np.float(luca_params.loc[video+'.bmp'].sco)
+    traces,traces_with_neuropil = ut.traces_extraction_AGONIA(data_path,agonia_th,neuropil_contaminated=True)
+    mat_traces = np.corrcoef(traces)
+    mat_traces_wbg = np.corrcoef(traces_with_neuropil)
+    datasets[key][video]['correlation_matrix_agonia_traces'] = mat_traces
+    datasets[key][video]['correlation_matrix_agonia_traces_with_bg'] = mat_traces_wbg
 
 
 
