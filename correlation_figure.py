@@ -104,6 +104,8 @@ plt.boxplot(corravsc_all)
 ax.set_xticklabels(results.keys())
 plt.savefig(os.path.join(PATH,'Correlation_agonia_vs_Caiman.svg'),format='svg')
 plt.show()
+np.median([item for sublist in corravsc_all for item in sublist])
+np.std([item for sublist in corravsc_all for item in sublist])
 
 ###################################################
 ### correlation vs signal to noise ratio figure ###
@@ -140,3 +142,17 @@ plt.boxplot(all_lVSg)
 ax.set_xticklabels(results.keys())
 plt.savefig(os.path.join(PATH,'LocalVSglobal_neuropil_corr.svg'),format='svg')
 plt.show()
+
+    #############################################
+### mean and std values to report in text ###
+#############################################
+
+np.shape(corravsc_all)
+todos_juntos = np.empty(0)
+for corr in corravsc_all:
+    todos_juntos = np.append(todos_juntos,corr)
+
+todos_juntos.mean()
+np.median(todos_juntos)
+np.std(todos_juntos)
+#

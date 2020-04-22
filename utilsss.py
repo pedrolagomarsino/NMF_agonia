@@ -678,7 +678,7 @@ def event_periods_correlation(caiman_trace,ago_denoised,method='dombeck',n_std=2
 
     return events_corr
 
-def localvsglobal_neuropil(data_path,agonia_th):
+def localvsglobal_neuropil(data_path,agonia_th,only_neuropil_trace=False):
     '''Calculate for each cell the local neuropil trace as the average intensity
     trace of all the surrounding pixels of box that do not belong to another box
     Where surrounding meaning pixel outside the box and inside a box with double
@@ -711,18 +711,18 @@ def localvsglobal_neuropil(data_path,agonia_th):
     not_cell = images[:,mask]
     neuropil_trace = not_cell.mean(axis=1)
     local_global_corr = np.zeros(boxes.shape[0])
+    if not only_neuropil_trace:
+        for cell,box in enumerate(boxes):
+            half_width_x = ((box[3]-box[1])/2).astype('int')
+            half_width_y = ((box[2]-box[0])/2).astype('int')
+            x_0 = [box[1]-half_width_x if (box[1]-half_width_x)>=0 else 0][0]
+            y_0 = [box[0]-half_width_y if (box[0]-half_width_y)>=0 else 0][0]
+            local_mask = mask[x_0:box[3]+half_width_x,y_0:box[2]+half_width_y]
+            big_box = images[:,x_0:box[3]+half_width_x,y_0:box[2]+half_width_y]
+            local_noise = big_box[:,local_mask].mean(axis=1)
+            local_global_corr[cell] = np.corrcoef([local_noise,neuropil_trace])[1,0]
 
-    for cell,box in enumerate(boxes):
-        half_width_x = ((box[3]-box[1])/2).astype('int')
-        half_width_y = ((box[2]-box[0])/2).astype('int')
-        x_0 = [box[1]-half_width_x if (box[1]-half_width_x)>=0 else 0][0]
-        y_0 = [box[0]-half_width_y if (box[0]-half_width_y)>=0 else 0][0]
-        local_mask = mask[x_0:box[3]+half_width_x,y_0:box[2]+half_width_y]
-        big_box = images[:,x_0:box[3]+half_width_x,y_0:box[2]+half_width_y]
-        local_noise = big_box[:,local_mask].mean(axis=1)
-        local_global_corr[cell] = np.corrcoef([local_noise,neuropil_trace])[1,0]
-
-    return local_global_corr
+    return local_global_corr,neuropil_trace
 
 def signal_to_noise(data_path,agonia_th,ground_truth=None,neurofinder=False):
     '''Calculate signal to noise ratio of each box
@@ -827,16 +827,19 @@ class Extractor:
     def __init__(self, pmin=80, pmax=95, workers=12):
         from multiprocessing import Pool
         self.data=np.full((1,1),np.nan,np.double)
+        self.data_with_bg=np.full((1,1),np.nan,np.double)
         self.mima=(pmin,pmax)
         self.pool=Pool(workers)
 
     def extract(self, frame, boxes):
         new_frame=np.full((1,self.data.shape[1]), np.nan, np.double)
         self.data=np.concatenate((self.data,new_frame),axis=0)
+        self.data_with_bg=np.concatenate((self.data_with_bg,new_frame),axis=0)
         if len(boxes):
             if len(boxes)-self.data.shape[1]+1>0:
                 new_cells=np.full((self.data.shape[0],len(boxes)-self.data.shape[1]+1), np.nan, np.double)
                 self.data=np.concatenate((self.data, new_cells), axis=1)
+                self.data_with_bg=np.concatenate((self.data_with_bg, new_cells), axis=1)
             patches=[]
             bg_frame=frame.astype(np.double, copy=True)
             for b in boxes:
@@ -844,16 +847,17 @@ class Extractor:
                 patches.append(frame[int(b[1]):int(b[3]+1),int(b[0]):int(b[2]+1)].flatten())
             traces=self.pool.starmap(_p_extract,[(p,self.mima) for p in patches])
             self.data[-1,1:]=traces
+            self.data_with_bg[-1,1:]=traces
             self.data[-1,1:]-=np.nanmean(bg_frame)
 
     def get_traces(self, tail=0):
         if tail>0 and tail>self.data.shape[0]:
             return self.data[int(-tail):,1:]
         else:
-            return self.data[1:,1:]
+            return self.data[1:,1:],self.data_with_bg[1:,1:]
 
 
-def traces_extraction_AGONIA(data_path,agonia_th):
+def traces_extraction_AGONIA(data_path,agonia_th,neuropil_contaminated=False):
     '''Extract traces of boxes using agonia Extractor class'''
     data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = get_files_names(data_path)
     Yr, dims, T = cm.load_memmap(fname_new)
@@ -880,9 +884,12 @@ def traces_extraction_AGONIA(data_path,agonia_th):
     ola = Extractor()
     for frame in images:
         ola.extract(frame,boxes)
-    traces = ola.get_traces()
+    traces,traces_with_bg = ola.get_traces()
     ola.pool.terminate()
-    return traces.T
+    if neuropil_contaminated:
+        return traces.T,traces_with_bg.T
+    else:
+        return traces.T
 
 def distcorr(X, Y):
     '''Compute the distance correlation function'''

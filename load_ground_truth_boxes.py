@@ -48,8 +48,8 @@ data_path = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/neurofinder/neurofind
 data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
 
 boxes_agonia = pickle.load(open(boxes_path,'rb'))
-boxes_agonia=boxes_agonia[boxes_agonia[:,4]>.35].astype(int)[:,:4]
-
+boxes_agonia=boxes_agonia[boxes_agonia[:,4]>.15].astype(int)[:,:4]
+boxes_agonia.shape
 roi_bounds = hv.Path([hv.Bounds(tuple([roi[0],median_projection.shape[0]-roi[1],roi[2],median_projection.shape[0]-roi[3]])) for roi in boxes_agonia[:,:4]]).options(color='red')
 roi_bounds_true = hv.Path([hv.Bounds(tuple([roi[0],median_projection.shape[0]-roi[1],roi[2],median_projection.shape[0]-roi[3]])) for roi in boxes_csv]).options(color='green')
 img = hv.Image(median_projection,bounds=(0,0,median_projection.shape[1],median_projection.shape[0])).options(cmap='gray')
