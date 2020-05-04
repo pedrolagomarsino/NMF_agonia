@@ -16,12 +16,12 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from sklearn.linear_model import LinearRegression
 from scipy.ndimage.measurements import center_of_mass
-from caiman.source_extraction.cnmf import cnmf as cnmf
-from caiman.source_extraction.cnmf import params as params
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore",category=FutureWarning)
     warnings.filterwarnings("ignore",category=DeprecationWarning)
     warnings.filterwarnings("ignore",category=FutureWarning)
+    from caiman.source_extraction.cnmf import cnmf as cnmf
+    from caiman.source_extraction.cnmf import params as params
     import utilsss as ut
     import caiman as cm
 hv.extension('matplotlib')
@@ -46,15 +46,20 @@ plt.boxplot(all_lVSg)
 ax.set_xticklabels(results.keys())
 plt.savefig(os.path.join(PATH,'LocalVSglobal_neuropil_corr.svg'),format='svg')
 plt.show()
-
+results.keys()
+[np.median(val) for val in all_lVSg]  #
+[np.std(val) for val in all_lVSg]
 np.median([item for sublist in all_lVSg for item in sublist])
 np.std([item for sublist in all_lVSg for item in sublist])
+
 ######################################################
 ### AGonia vs Caiman background trace correlations ###
 ######################################################
 background_corr_all = pickle.load(open(os.path.join(PATH,"bg_AGvsCai_correlation.pkl"),"rb"))
+VPM_corr = pickle.load(open('/media/pedro/DATAPART1/AGOnIA/VPM_corrected/bg_AGvsCai_correlation.pkl','rb'))
+background_corr_all.append(VPM_corr)
 # background_corr_all = []
-# order = ['CA1_Ch1','CA1_Ch2','L4','neurofinder','neurofinder_test','ABO']
+order = ['CA1_Ch1','CA1_Ch2','L4','neurofinder','neurofinder_test','ABO','VPM']
 #
 # full_data_path = '/media/pedro/DATAPART1/AGOnIA/PNAS_RAW_tifs'
 # luca_params = pd.read_csv('/media/pedro/DATAPART1/AGOnIA/params/ABOb V3_log.txt',sep=" ")
@@ -72,12 +77,17 @@ background_corr_all = pickle.load(open(os.path.join(PATH,"bg_AGvsCai_correlation
 # background_corr_all
 # pickle.dump(background_corr_all,open(os.path.join(PATH,"bg_AGvsCai_correlation.pkl"),"wb"))
 
-fig,ax = plt.subplots(figsize=(8,5))
+fig,ax = plt.subplots(figsize=(10,5))
 plt.boxplot(background_corr_all)
 plt.ylabel('Background component correlation AGOnIA vs CaImAn')
 ax.set_xticklabels(order)
 plt.savefig(os.path.join(PATH,'bg_AGvsCai_correlation.svg'),format='svg')
 plt.show()
+
+[np.median(val) for val in background_corr_all]
+
+[np.std(val) for val in background_corr_all]
+
 
 np.mean([item for sublist in background_corr_all for item in sublist])
 np.std([item for sublist in background_corr_all for item in sublist])
@@ -104,7 +114,7 @@ for i,corr in enumerate(all_cross_corr):
 fig,ax = plt.subplots(figsize=(16,5))
 plt.boxplot(all_toplot)
 plt.ylabel('Cells cross correlation w/without bg subtraction')
-ax.set_xticklabels(['CA1_Ch1_wbg','CA1_Ch1','CA1_Ch2_wbg','CA1_Ch2','L4_wbg','L4','NF_wbg','NF','NF_test_wbg','NF_test','ABO_wbg','ABO'])
+ax.set_xticklabels(['CA1_Ch1_wbg','CA1_Ch1','CA1_Ch2_wbg','CA1_Ch2','L4_wbg','L4','NF_wbg','NF','NF_test_wbg','NF_test','ABO_wbg','ABO','VPM_wbg','VPM'])
 plt.savefig(os.path.join(PATH,'bg_subtraction_correlations.svg'),format='svg')
 plt.show()
 for p in range(6):
@@ -115,6 +125,9 @@ correlation_drop=[]
 for p in range(6):
     correlation_drop.append(np.median(all_toplot[p*2])-np.median(all_toplot[p*2+1]))
 np.mean(correlation_drop)
+
+[np.mean(val) for val in all_cross_corr]
+[np.nanmean(val) for val in all_cross_corr_with_bg]
 
 #################################
 ### covariance matrix example ###

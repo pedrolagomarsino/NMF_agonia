@@ -9,26 +9,26 @@ sys.path.insert(1,'/home/pedro/Work/AGOnIA/code')
 import AGOnIA2 as ag
 import numpy as np
 import pandas as pd
-import caiman as cm
 import seaborn as sns
 import holoviews as hv
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from sklearn.linear_model import LinearRegression
 from scipy.ndimage.measurements import center_of_mass
-from caiman.source_extraction.cnmf import cnmf as cnmf
-from caiman.source_extraction.cnmf import params as params
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore",category=FutureWarning)
     warnings.filterwarnings("ignore",category=DeprecationWarning)
     warnings.filterwarnings("ignore",category=FutureWarning)
+    import caiman as cm
+    from caiman.source_extraction.cnmf import cnmf as cnmf
+    from caiman.source_extraction.cnmf import params as params
     import utilsss as ut
 hv.extension('matplotlib')
 
 
 PATH = '/media/pedro/DATAPART1/AGOnIA'
-data_paths = ['CA1/Ch1','CA1/Ch2','L4','neurofinder','neurofinder_test','PNAS_RAW_tifs']
-llaves = ['CA1_Ch1','CA1_Ch2','L4','neurofinder','neurofinder_test','ABO']
+data_paths = ['CA1/Ch1','CA1/Ch2','L4','neurofinder','neurofinder_test','PNAS_RAW_tifs','VPM_corrected']
+llaves = ['CA1_Ch1','CA1_Ch2','L4','neurofinder','neurofinder_test','ABO','VPM_corrected']
 if os.path.exists(os.path.join(PATH,'complete_figure_dict.pkl')):
     results = pickle.load(open(os.path.join(PATH,'complete_analysis_results.pkl'),'rb'))
 else:
@@ -45,9 +45,10 @@ else:
 PATHS = ['/media/pedro/DATAPART1/AGOnIA/CA1/Ch1/TSeries-03072019-1203-1210_Ch1__movie_corrected_aligned',
          '/media/pedro/DATAPART1/AGOnIA/L4/1118',
          '/media/pedro/DATAPART1/AGOnIA/neurofinder/neurofinder.01.00',
-         '/media/pedro/DATAPART1/AGOnIA/PNAS_RAW_tifs/503109347']
-cells = [3,20,57,118]
-agonia_th = [.25,0.2,.15,0.05]
+         '/media/pedro/DATAPART1/AGOnIA/PNAS_RAW_tifs/503109347',
+         '/media/pedro/DATAPART1/AGOnIA/VPM_corrected/moco1044']
+cells = [3,20,57,118,15]
+agonia_th = [.25,0.2,.15,0.05,0.3]
 
 caiman_trace = []
 agonia_trace = []
@@ -63,8 +64,8 @@ traces_ABO = traces.copy()
 agonia_trace.append(traces_neurofinder[cells[2]])
 agonia_trace.append(traces_ABO[cells[3]])
 
-fig,axs = plt.subplots(4,figsize=(16,8))
-for i in range(4):
+fig,axs = plt.subplots(5,figsize=(16,8))
+for i in range(5):
     axs[i].plot(caiman_trace[i])
 # add a big axes, hide frame
 fig.add_subplot(111, frameon=False)
@@ -75,8 +76,8 @@ plt.xlabel('Frames',size=20)
 plt.ylabel('a.u',size=20)
 plt.title('Seeded-CNMF traces',size=20)
 plt.savefig('/media/pedro/DATAPART1/AGOnIA/example_traces_caiman.svg',format='svg')
-fig,axs = plt.subplots(4,figsize=(16,8))
-for i in range(4):
+fig,axs = plt.subplots(5,figsize=(16,8))
+for i in range(5):
     axs[i].plot(agonia_trace[i])
 # add a big axes, hide frame
 fig.add_subplot(111, frameon=False)
@@ -104,6 +105,10 @@ plt.boxplot(corravsc_all)
 ax.set_xticklabels(results.keys())
 plt.savefig(os.path.join(PATH,'Correlation_agonia_vs_Caiman.svg'),format='svg')
 plt.show()
+
+[np.median(val) for val in corravsc_all]
+[np.std(val) for val in corravsc_all]
+
 np.median([item for sublist in corravsc_all for item in sublist])
 np.std([item for sublist in corravsc_all for item in sublist])
 
@@ -143,7 +148,7 @@ ax.set_xticklabels(results.keys())
 plt.savefig(os.path.join(PATH,'LocalVSglobal_neuropil_corr.svg'),format='svg')
 plt.show()
 
-    #############################################
+#############################################
 ### mean and std values to report in text ###
 #############################################
 

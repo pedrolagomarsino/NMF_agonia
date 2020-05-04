@@ -14,21 +14,21 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from sklearn.linear_model import LinearRegression
 from scipy.ndimage.measurements import center_of_mass
-from caiman.source_extraction.cnmf import cnmf as cnmf
-from caiman.source_extraction.cnmf import params as params
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore",category=FutureWarning)
     warnings.filterwarnings("ignore",category=DeprecationWarning)
     warnings.filterwarnings("ignore",category=FutureWarning)
     import utilsss as ut
     import caiman as cm
+    from caiman.source_extraction.cnmf import cnmf as cnmf
+    from caiman.source_extraction.cnmf import params as params
 hv.extension('matplotlib')
 
 sys.path.insert(1, '/home/pedro/Work/Hippocampus/code')
 import to_Pedro as sut
 
-full_data_path = '/media/pedro/DATAPART1/AGOnIA/PNAS_RAW_tifs'
-luca_params = pd.read_csv('/media/pedro/DATAPART1/AGOnIA/params/ABOb V3_log.txt',sep=" ")
+full_data_path = '/media/pedro/DATAPART1/AGOnIA/VPM_corrected'
+luca_params = pd.read_csv('/media/pedro/DATAPART1/AGOnIA/params/VPM_log (copy).txt',sep=" ")
 luca_params.set_index('name',inplace=True)
 #full_data_path = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/neurofinder'
 for path in next(os.walk(full_data_path))[1]:
@@ -114,7 +114,7 @@ for path in next(os.walk(full_data_path))[1]:
         ut.seeded_Caiman_wAgonia(data_path,opts,agonia_th=agonia_th)
 
 # Check results
-data_path = '/media/pedro/DATAPART1/AGOnIA/PNAS_RAW_tifs/539670003'
+data_path = '/media/pedro/DATAPART1/AGOnIA/VPM_corrected/moco1077'
 data_path = '/media/pedro/DATAPART1/AGOnIA/CA1/Ch2/'+next(os.walk(full_data_path))[1][0]
 data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut.get_files_names(data_path)
 seeded = cnmf.load_CNMF(results_caiman_path)
@@ -128,7 +128,7 @@ only_true_positives = False
 
 # if the analysis has already been done there should be a pickle with the analysis in a dictionary
 #possible keys are: ['CA1_Ch1','CA1_Ch2','L4','neurofinder','neurofinder_test','ABO']
-key = 'ABO' #'L4'
+key = 'VPM_corrected' #'L4'
 if only_true_positives:
     if os.path.exists(os.path.join(full_data_path,key+'analysis_results_only_truepos.pkl')):
         datasets = pickle.load(open(os.path.join(full_data_path,key+'analysis_results_only_truepos.pkl'),'rb'))
@@ -143,6 +143,7 @@ datasets[key].keys()
 ##########################################
 ########### correlation figure ###########
 ##########################################
+video = next(os.walk(full_data_path))[1][2]
 
 for video in next(os.walk(full_data_path))[1]:
     print(video)
@@ -191,6 +192,10 @@ for video in next(os.walk(full_data_path))[1]:
             if i in stats['true_positives'][:,1]:
                 corr.append(np.corrcoef([trace,seeded.estimates.C[i]])[1,0])
         else:
+            # if i<42:
+            #     corr[i] = np.corrcoef([trace,seeded.estimates.C[i]])[1,0]
+            # else:
+            #     corr[i] = np.corrcoef([trace,seeded.estimates.C[i+1]])[1,0]
             corr[i] = np.corrcoef([trace,seeded.estimates.C[i]])[1,0]
     datasets[key][video]['corrs_comp_denoised'] = np.array(corr)
 
@@ -200,13 +205,14 @@ labels = []
 for exp in list(datasets[key]):
     corravsc_all = np.append(corravsc_all,datasets[key][exp]['corrs_comp_denoised'])
     corr_avsc.append(datasets[key][exp]['corrs_comp_denoised'])
-    labels.append(exp[-4:])
+    labels.append(exp)
 
 fig,ax = plt.subplots(figsize=(8,5))
 plt.title('AgoniaVsCaiman Trace Correlations',fontsize=15)
 plt.boxplot(corr_avsc)
 ax.set_xticklabels(labels)
-#plt.ylim([-0.25,1.05])
+plt.ylim([0,1.05])
+
 if only_true_positives:
     plt.savefig(os.path.join(full_data_path,key+'_correlation_agonia_vs_Caiman_only_truepos.png'),format='png')
 else:
@@ -217,7 +223,7 @@ fig,ax = plt.subplots(figsize=(5,5))
 plt.title('AgoniaVsCaiman Trace Correlations',fontsize=15)
 plt.boxplot(corravsc_all)
 ax.set_xticklabels([key])
-#plt.ylim([-0.25,1.05])
+plt.ylim([0,1.05])
 if only_true_positives:
     plt.savefig(os.path.join(full_data_path,key+'_all_correlation_agonia_vs_Caiman_only_tp.png'),format='png')
 else:
@@ -253,12 +259,12 @@ legend = []
 for exp in list(datasets[key]):
     #if exp!='neurofinder.02.00' and exp!='neurofinder.02.00.test' and exp!='neurofinder.02.01' and exp!='neurofinder.02.01.test':
     plt.plot(np.log(datasets[key][exp]['sig_to_noise']),datasets[key][exp]['corrs_comp_denoised'],'.')
-    legend.append(exp[-10:])
-#plt.legend(legend,loc ='lower right')
+    legend.append(exp)
+plt.legend(legend,loc ='lower right')
 plt.xlabel('log(Signal to noise ratio)')
 plt.ylabel('CaimanVSAgonia trace correlation')
 
-#plt.ylim([-0.25,1.05])
+plt.ylim([0,1.05])
 if only_true_positives:
     plt.savefig(os.path.join(full_data_path,key+'_STNR_VS_Correlation_only_truepos.png'),format='png')
 else:
@@ -272,14 +278,14 @@ for video in next(os.walk(full_data_path))[1]:
     print(video)
     data_path = os.path.join(full_data_path,video)
     agonia_th = np.float(luca_params.loc[video+'.bmp'].sco)
-    datasets[key][video]['localVSglobal_neuropil_corr'] = ut.localvsglobal_neuropil(data_path,agonia_th)
+    datasets[key][video]['localVSglobal_neuropil_corr'],_ = ut.localvsglobal_neuropil(data_path,agonia_th,only_neuropil_trace=False)
 
 lVSg = []
 all_lVSg = np.empty(0)
 for exp in list(datasets[key]):
     lVSg.append(datasets[key][exp]['localVSglobal_neuropil_corr'])
     all_lVSg = np.append(all_lVSg,datasets[key][exp]['localVSglobal_neuropil_corr'])
-fig,ax = plt.subplots(figsize=(16,5))
+fig,ax = plt.subplots(figsize=(8,5))
 plt.title('LocalvsGlobal noise Correlations',fontsize=15)
 plt.boxplot(lVSg)
 ax.set_xticklabels(labels)
@@ -293,11 +299,6 @@ plt.boxplot(all_lVSg)
 plt.savefig(os.path.join(full_data_path,key+'_all_localVSglobal_neuropil_corr.png'),format='png')
 plt.show()
 
-#save results
-if only_true_positives:
-    pickle.dump(datasets,open(os.path.join(full_data_path,key+"analysis_results_only_truepos.pkl"),"wb"))
-else:
-    pickle.dump(datasets,open(os.path.join(full_data_path,key+"analysis_results.pkl"),"wb"))
 
 ######################################################
 ### AGonia vs Caiman background trace correlations ###
@@ -317,9 +318,10 @@ for i,video in enumerate(next(os.walk(full_data_path))[1]):
     _,neuropil_trace = ut.localvsglobal_neuropil(data_path,agonia_th,only_neuropil_trace=True)
     background_corr[i] = np.corrcoef(neuropil_trace,seeded.estimates.f[0])[0,1]
 background_corr_all.append(background_corr)
-pickle.dump(background_corr_all,open(os.path.join(PATH,"bg_AGvsCai_correlation.pkl"),"wb"))
-
-
+#pickle.dump(background_corr_all,open(os.path.join(PATH,"bg_AGvsCai_correlation.pkl"),"wb"))
+pickle.dump(background_corr_all,open(os.path.join(full_data_path,"bg_AGvsCai_correlation.pkl"),"wb"))
+np.std(background_corr_all)
+np.mean(background_corr_all)
 ####################################################
 ### Cross correlation between cells and neuropil ###
 ####################################################
@@ -335,5 +337,11 @@ for video in next(os.walk(full_data_path))[1]:
     datasets[key][video]['correlation_matrix_agonia_traces_with_bg'] = mat_traces_wbg
 
 
+
+#save results
+if only_true_positives:
+    pickle.dump(datasets,open(os.path.join(full_data_path,key+"analysis_results_only_truepos.pkl"),"wb"))
+else:
+    pickle.dump(datasets,open(os.path.join(full_data_path,key+"analysis_results.pkl"),"wb"))
 
 #
