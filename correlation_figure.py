@@ -28,8 +28,8 @@ hv.extension('matplotlib')
 
 PATH = '/media/pedro/DATAPART1/AGOnIA'
 data_paths = ['CA1/Ch1','CA1/Ch2','L4','neurofinder','neurofinder_test','PNAS_RAW_tifs','VPM_corrected']
-llaves = ['CA1_Ch1','CA1_Ch2','L4','neurofinder','neurofinder_test','ABO','VPM_corrected']
-if os.path.exists(os.path.join(PATH,'complete_figure_dict.pkl')):
+llaves = ['CA1_Ch1','CA1_Ch2','L4','neurofinder','neurofinder_test','ABO','VPM_corrected']#'complete_figure_dict.pkl')):
+if os.path.exists(os.path.join(PATH,'complete_analysis_results.pkl')):
     results = pickle.load(open(os.path.join(PATH,'complete_analysis_results.pkl'),'rb'))
 else:
     results = {}
@@ -131,6 +131,17 @@ plt.xlabel('log(Signal to noise ratio)')
 plt.ylabel('CaimanVSAgonia trace correlation')
 plt.savefig(os.path.join(PATH,'STNR_VS_Correlation.svg'),format='svg')
 plt.show()
+
+# separate datasets-plots
+fig,ax = plt.subplots(4,2,figsize=(10,10),sharex=True,sharey=True)
+for i,key in enumerate(results.keys()):
+    ax[i%4,int(i/4)].plot(np.log(stnr_all[-i-1]),corravsc_all[-i-1],'.',alpha=.5,color='C'+str(i),label=list(results.keys())[-i-1])
+    ax[i%4,int(i/4)].legend(loc='lower right')
+fig.text(0.5, 0.04, 'log(Signal to noise ratio)', ha='center',size=20)
+fig.text(0.04, 0.5, 'CaimanVSAgonia trace correlation', va='center', rotation='vertical',size=20)
+plt.savefig(os.path.join(PATH,'STNR_VS_Correlation_separatedplots.svg'),format='svg')
+plt.show()
+
 
 ####################################
 ### local vs global correlations ###

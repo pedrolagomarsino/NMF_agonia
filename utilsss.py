@@ -357,7 +357,9 @@ def plot_AGonia_boxes(data_path,Score,box_idx):
     ola = Extractor()
     for frame in images:
         ola.extract(frame,[boxes[box_idx]])
-    box_trace = ola.get_traces().squeeze()
+    box_trace,_ = ola.get_traces()
+    box_trace = box_trace.squeeze()
+    ola.pool.terminate()
     box_square = hv.Path([hv.Bounds(tuple([boxes[box_idx,0],median_projection.shape[0]-boxes[box_idx,1],boxes[box_idx,2],
                             median_projection.shape[0]-boxes[box_idx,3]]))]).options(color='lime')
     return ((img*roi_bounds*box_square).opts(width=600,height=600)+hv.Curve((np.linspace(0,len(box_trace)-1,
