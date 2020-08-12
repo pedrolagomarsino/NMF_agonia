@@ -193,8 +193,78 @@ fig.text(0.5, 0.04, 'Percentile', ha='center',fontsize=20)
 fig.text(0.04, 0.5, 'Fluorescence', va='center', rotation='vertical',fontsize=20)
 plt.savefig('/media/pedro/DATAPART1/AGOnIA/percentile_examples.svg')
 plt.plot(gaugau)
+### percentile plots for all recordings for each dataset ###
+medianisima=[]
+fig,axes = plt.subplots(nrows=4,ncols=2,figsize=(10,20))
+for i,ax in enumerate(axes.flat[:-1]):
+    recs = next(os.walk(os.path.join(PATH,data_paths[i])))[1]
+    perc = []
+    for recording in recs:
+        _,median_projection,_,_,_,_ = ut.get_files_names(os.path.join(PATH,data_paths[i],recording))
+        perc.append([np.percentile(median_projection,x) for x in range(100)])
+        ax.plot(perc[-1],'gray',alpha=0.3)
+    m = np.mean(perc,axis=0)
+    sd = np.std(perc,axis=0)
+    x = np.linspace(0,99,100)
+    ax.plot(x,m,label=data_paths[i])
+    ax.fill_between(x,m+sd,m-sd,alpha=0.5)
+    ax.legend()
+    fig.text(0.5, 0.1, 'Percentile', ha='center',fontsize=20)
+    fig.text(0.04, 0.5, 'Fluorescence', va='center', rotation='vertical',fontsize=20)
+    medianisima.append(m[50])
+    plt.savefig('/media/pedro/DATAPART1/AGOnIA/fluorescence_percentile plots_datasets.svg')
 
+
+
+
+plt.plot(np.array(medianisima)/60000,'.-')
+plt.ylim([0,0.4])
 #
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
