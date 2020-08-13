@@ -9,6 +9,7 @@
 #   do the same for ABO, LIV and CA1. let's see if NF and VPM have significantly
 #   different (smaller) dynamic range. 10 frames for ABO, 20 for VPN e 200 for NF
 import os
+
 import random
 import warnings
 import numpy as np
@@ -213,12 +214,37 @@ for i,ax in enumerate(axes.flat[:-1]):
     fig.text(0.04, 0.5, 'Fluorescence', va='center', rotation='vertical',fontsize=20)
     medianisima.append(m[50])
     plt.savefig('/media/pedro/DATAPART1/AGOnIA/fluorescence_percentile plots_datasets.svg')
-
-
-
+### mean Fluorescence bellow 50th percentile for all recordings for each dataset ###
+mean_bellow_50th_1 = []
+for data in data_paths:
+    recs = next(os.walk(os.path.join(PATH,data)))[1]
+    mean_fluo = []
+    for recording in recs:
+        if data=='PNAS_RAW_tifs':
+            try:
+                median_path = os.path.join(os.path.join(PATH,data,recording),[data for data in os.listdir(os.path.join(PATH,data,recording)) if data.endswith('.jpg')
+                                                  and data.startswith('MED')][0])
+                if plt.imread(median_path).ndim==3:
+                    median_projection = (np.array(plt.imread(median_path),dtype='uint16')*255).mean(axis=2).astype('uint16')
+                else:
+                    median_projection = np.array(plt.imread(median_path),dtype='uint16')*255
+            except:
+                print('Median projection is missing')
+        else:
+            _,median_projection,_,_,_,_ = ut.get_files_names(os.path.join(PATH,data,recording))
+        median_projection = median_projection/np.max(median_projection)
+        mean_fluo.append(np.mean(median_projection[median_projection<=np.median(median_projection)]))
+    mean_bellow_50th_1.append(mean_fluo)
+fig,ax = plt.subplots(figsize=(16,6))
+ax.boxplot(mean_bellow_50th_1,labels=['CA1_Ch1','CA1_Ch2','L4','nf','nf_test','PNAS','VPM_corr'])
+ax.tick_params(labelsize=15)
+ax.set_ylabel('Mean fluorescence < Median',fontsize=20)
+plt.savefig('/media/pedro/DATAPART1/AGOnIA/mean_fluorescence_bellow_median.svg')
 
 plt.plot(np.array(medianisima)/60000,'.-')
 plt.ylim([0,0.4])
+for med in os.listdir('/media/pedro/Disk/PNAS medians'):
+    os.makedirs(os.path.join('/media/pedro/Disk/PNAS medians',med[4:-4]))
 #
 
 
