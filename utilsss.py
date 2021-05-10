@@ -323,7 +323,7 @@ def run_caiman_pipeline(data_path,opts,refit=False,component_evaluation=False,fr
         cm.stop_server(dview=dview)
     return cnm, cnm2
 
-def plot_AGonia_boxes(data_path,Score,box_idx):
+def plot_AGonia_boxes(data_path,Score,box_idx,traces=False):
     '''Function used as input for the dynamic map in function boxes_exploration():
     holoviews based plot to see Agonia boxes on top of median projection and mean trace
     for selected boxes.
@@ -354,16 +354,20 @@ def plot_AGonia_boxes(data_path,Score,box_idx):
                                                           )).options(cmap='gray')
 
     #box_trace = images[:,boxes[box_idx,1]:boxes[box_idx,3],boxes[box_idx,0]:boxes[box_idx,2]].mean(axis=(1,2))
-    ola = Extractor()
-    for frame in images:
-        ola.extract(frame,[boxes[box_idx]])
-    box_trace,_ = ola.get_traces()
-    box_trace = box_trace.squeeze()
-    ola.pool.terminate()
     box_square = hv.Path([hv.Bounds(tuple([boxes[box_idx,0],median_projection.shape[0]-boxes[box_idx,1],boxes[box_idx,2],
-                            median_projection.shape[0]-boxes[box_idx,3]]))]).options(color='lime')
-    return ((img*roi_bounds*box_square).opts(width=600,height=600)+hv.Curve((np.linspace(0,len(box_trace)-1,
-            len(box_trace)),box_trace),'Frame','Mean box Fluorescence').opts(width=600,framewise=True)).cols(1)
+    median_projection.shape[0]-boxes[box_idx,3]]))]).options(color='lime')
+    if traces:
+        ola = Extractor()
+        for frame in images:
+            ola.extract(frame,[boxes[box_idx]])
+        box_trace,_ = ola.get_traces()
+        box_trace = box_trace.squeeze()
+        ola.pool.terminate()
+        ret = ((img*roi_bounds*box_square).opts(width=600,height=600)+hv.Curve((np.linspace(0,len(box_trace)-1,
+                len(box_trace)),box_trace),'Frame','Mean box Fluorescence').opts(width=600,framewise=True)).cols(1)
+    else:
+        ret = (img*roi_bounds*box_square).opts(width=600,height=600)
+    return ret
 
 def plot_AGonia_boxes_interactive(data_path,Score,x,y):
     '''Function used as input for the dynamic map in function boxes_exploration_interactive():
