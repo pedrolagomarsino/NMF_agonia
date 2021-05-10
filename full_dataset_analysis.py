@@ -5,6 +5,7 @@ import pickle
 import imageio
 import warnings
 sys.path.insert(1,'/home/pedro/keras-retinanet/AGOnIA_release')
+import scipy as sp
 import AGOnIA2 as ag
 import numpy as np
 import pandas as pd
@@ -27,10 +28,54 @@ hv.extension('matplotlib')
 sys.path.insert(1, '/home/pedro/Work/Hippocampus/code')
 import to_Pedro as sut
 
-full_data_path = '/media/pedro/DATAPART1/AGOnIA/VPM_corrected'
-luca_params = pd.read_csv('/media/pedro/DATAPART1/AGOnIA/params/VPM_log (copy).txt',sep=" ")
-luca_params.set_index('name',inplace=True)
+# full_data_path = '/media/pedro/DATAPART1/AGOnIA/VPM_corrected'
+# luca_params = pd.read_csv('/media/pedro/DATAPART1/AGOnIA/params/VPM_log (copy).txt',sep=" ")
+# full_data_path = '/media/pedro/42B08BE7B08BDFB1/backups/AGOnIA_28042020/L4'
+# luca_params = pd.read_csv('/media/pedro/42B08BE7B08BDFB1/backups/AGOnIA_28042020/params/L IV test_log.txt',sep=" ")
 #full_data_path = '/media/pedro/DATAPART1/AGOnIA/datasets_figure/neurofinder'
+full_data_path = '/mnt/DATAPART1/AGOnIA/AGOnIA_28042020/VPM_corrected'
+luca_params = pd.read_csv('/mnt/DATAPART1/AGOnIA/AGOnIA_28042020/params/VPM_log (copy).txt',sep=" ")
+luca_params.set_index('name',inplace=True)
+#datasets paths
+# anotations_all = pd.read_csv('/media/pedro/DATAPART1/AGOnIA/TestSets_ENH/ABOb_V3/test.csv')
+anotations_all = pd.read_csv('/mnt/DATAPART1/AGOnIA/AGOnIA_28042020/TestSets_ENH/CA1_test/test.csv')
+anotations_all.columns = ['experiment','xmin','ymin','xmax','ymax','id']
+only_true_positives = False
+#denoising for the review to re-calculate all the correlations
+denoise_review = True
+#possible keys are: ['CA1_Ch1','CA1_Ch2','L4','neurofinder','neurofinder_test','ABO'] 'VPM_corrected'
+key = 'VPM_corrected' # 'VPM_corrected' #
+# frame rate = [LIV:0.5 – 3 Hz; CA1: 3.03 Hz; VPM: 2.66 Hz; ABO 30 HZ; NF: 00 7 Hz,01 and 03 are 7.5Hz, 02 8 Hz,04 are 3 Hz]
+frame_rate = {'L4': {'1109': 2.6,
+                     '1110': 2.6,
+                     '1112': 2.6,
+                     '1113': 2.6,
+                     '1115': 2.6,
+                     '1117': 2.6,
+                     '1118': 2.6,
+                     '1121': 2.6,
+                     '943': 2.12,
+                     '944': 2.12,
+                     '946': 2.12},
+              'CA1_Ch1': 3.03,
+              'CA1_Ch2': 3.03,
+              'VPM_corrected': 2.66,
+              'ABO': 30,
+              'neurofinder_test': {'neurofinder.01.00.test':7.5,
+               'neurofinder.01.01.test':7.5,
+               'neurofinder.02.00.test':8,
+               'neurofinder.02.01.test':8,
+               'neurofinder.04.00.test':3,
+               'neurofinder.04.01.test':3},
+              'neurofinder': {'neurofinder.01.00':7.5,
+               'neurofinder.01.01':7.5,
+               'neurofinder.02.00':8,
+               'neurofinder.02.01':8,
+               'neurofinder.04.00':3,
+               'neurofinder.04.01':3}}
+min_fr = 2.12
+neurofinder_recording = False
+
 for path in next(os.walk(full_data_path))[1]:
     print('starting analysis of: '+path)
     data_path = os.path.join(full_data_path,path)
@@ -120,18 +165,15 @@ data_name,median_projection,fnames,fname_new,results_caiman_path,boxes_path = ut
 seeded = cnmf.load_CNMF(results_caiman_path)
 seeded.estimates.nb_view_components(img=median_projection,denoised_color='red')
 
-
-#datasets paths
-anotations_all = pd.read_csv('/media/pedro/DATAPART1/AGOnIA/TestSets_ENH/ABOb_V3/test.csv')
-anotations_all.columns = ['experiment','xmin','ymin','xmax','ymax','id']
-only_true_positives = False
-
 # if the analysis has already been done there should be a pickle with the analysis in a dictionary
-#possible keys are: ['CA1_Ch1','CA1_Ch2','L4','neurofinder','neurofinder_test','ABO']
-key = 'VPM_corrected' #'L4'
 if only_true_positives:
     if os.path.exists(os.path.join(full_data_path,key+'analysis_results_only_truepos.pkl')):
         datasets = pickle.load(open(os.path.join(full_data_path,key+'analysis_results_only_truepos.pkl'),'rb'))
+    else:
+        datasets = {key:{}}
+elif denoise_review:
+    if os.path.exists(os.path.join(full_data_path,key+'analysis_results_denoised_review.pkl')):
+        datasets = pickle.load(open(os.path.join(full_data_path,key+'analysis_results_denoised_review.pkl'),'rb'))
     else:
         datasets = {key:{}}
 else:
@@ -191,13 +233,28 @@ for video in next(os.walk(full_data_path))[1]:
         if only_true_positives:
             if i in stats['true_positives'][:,1]:
                 corr.append(np.corrcoef([trace,seeded.estimates.C[i]])[1,0])
-        else:
+        elif denoise_review:
+            fr = frame_rate[key][video] if isinstance(frame_rate[key],dict) else frame_rate[key]
+            width = round(fr/min_fr)
+            caiman_smooth = sp.ndimage.gaussian_filter(seeded.estimates.C[i], sigma=width)
+            trace_smooth = sp.ndimage.gaussian_filter(trace, sigma=width)
+            # this is a horrible patch for the deleted cells, look at After data Oblivion note on evernote
             # if i<42:
+            #     caiman_smooth = sp.ndimage.gaussian_filter(seeded.estimates.C[i], sigma=width)
+            # else:
+            #     caiman_smooth = sp.ndimage.gaussian_filter(seeded.estimates.C[i+1], sigma=width)
+            corr[i] = np.corrcoef([trace_smooth,caiman_smooth])[1,0]
+        else:
+            # this is a horrible patch for the deleted cells, look at After data Oblivion note on evernote
+            # if i<108:
             #     corr[i] = np.corrcoef([trace,seeded.estimates.C[i]])[1,0]
             # else:
             #     corr[i] = np.corrcoef([trace,seeded.estimates.C[i+1]])[1,0]
             corr[i] = np.corrcoef([trace,seeded.estimates.C[i]])[1,0]
     datasets[key][video]['corrs_comp_denoised'] = np.array(corr)
+plt.figure(figsize=(18,4))
+plt.plot(trace)
+plt.plot(trace_smooth)
 
 corravsc_all = np.empty(0)
 corr_avsc = []
@@ -206,15 +263,31 @@ for exp in list(datasets[key]):
     corravsc_all = np.append(corravsc_all,datasets[key][exp]['corrs_comp_denoised'])
     corr_avsc.append(datasets[key][exp]['corrs_comp_denoised'])
     labels.append(exp)
-
+    # labels.append(exp[-4:])
+# keyss = 'other_dataset'
+# #averages_together = {}
+# averages_together[keyss] = {}
+# averages_together[keyss]['mean'] = corravsc_all.mean()
+# averages_together[keyss]['median'] = np.median(corravsc_all)
+# averages_together[keyss]['std'] = corravsc_all.std()
+# averages_together[keyss]['ncells'] = corravsc_all.shape[0]
+# #average_values = {}
+# average_values[key] = {}
+# average_values[key]['mean'] = corravsc_all.mean()
+# average_values[key]['median'] = np.median(corravsc_all)
+# average_values[key]['std'] = corravsc_all.std()
+# average_values[key]['ncells'] = corravsc_all.shape[0]
 fig,ax = plt.subplots(figsize=(8,5))
+# fig,ax = plt.subplots(figsize=(16,5))
 plt.title('AgoniaVsCaiman Trace Correlations',fontsize=15)
 plt.boxplot(corr_avsc)
 ax.set_xticklabels(labels)
-plt.ylim([0,1.05])
+# plt.ylim([-0.05,1.05])
 
 if only_true_positives:
     plt.savefig(os.path.join(full_data_path,key+'_correlation_agonia_vs_Caiman_only_truepos.png'),format='png')
+elif denoise_review:
+    plt.savefig(os.path.join(full_data_path,key+'_correlation_agonia_vs_Caiman_denoised_review.png'),format='png')
 else:
     plt.savefig(os.path.join(full_data_path,key+'_correlation_agonia_vs_Caiman.png'),format='png')
 plt.show()
@@ -223,9 +296,11 @@ fig,ax = plt.subplots(figsize=(5,5))
 plt.title('AgoniaVsCaiman Trace Correlations',fontsize=15)
 plt.boxplot(corravsc_all)
 ax.set_xticklabels([key])
-plt.ylim([0,1.05])
+# plt.ylim([0,1.05])
 if only_true_positives:
     plt.savefig(os.path.join(full_data_path,key+'_all_correlation_agonia_vs_Caiman_only_tp.png'),format='png')
+elif denoise_review:
+    plt.savefig(os.path.join(full_data_path,key+'_all_correlation_agonia_vs_Caiman_denoised_review.png'),format='png')
 else:
     plt.savefig(os.path.join(full_data_path,key+'_all_correlation_agonia_vs_Caiman.png'),format='png')
 plt.show()
@@ -243,7 +318,7 @@ for video in next(os.walk(full_data_path))[1]:
         ground_truth=None
     data_path = os.path.join(full_data_path,video)
     agonia_th = np.float(luca_params.loc[video+'.bmp'].sco)
-    datasets[key][video]['sig_to_noise'] = ut.signal_to_noise(data_path,agonia_th,ground_truth,neurofinder=False)
+    datasets[key][video]['sig_to_noise'] = ut.signal_to_noise(data_path,agonia_th,ground_truth,neurofinder=neurofinder_recording)
 
 #datasets[key]['531006860']['sig_to_noise'] = np.delete(datasets[key]['531006860']['sig_to_noise'],66)
 
@@ -264,9 +339,11 @@ plt.legend(legend,loc ='lower right')
 plt.xlabel('log(Signal to noise ratio)')
 plt.ylabel('CaimanVSAgonia trace correlation')
 
-plt.ylim([0,1.05])
+plt.ylim([.0,1.05])
 if only_true_positives:
     plt.savefig(os.path.join(full_data_path,key+'_STNR_VS_Correlation_only_truepos.png'),format='png')
+elif denoise_review:
+    plt.savefig(os.path.join(full_data_path,key+'_STNR_VS_Correlation_nolegend_denoised_review.png'),format='png')
 else:
     plt.savefig(os.path.join(full_data_path,key+'_STNR_VS_Correlation_nolegend.png'),format='png')
 plt.show()
@@ -341,6 +418,8 @@ for video in next(os.walk(full_data_path))[1]:
 #save results
 if only_true_positives:
     pickle.dump(datasets,open(os.path.join(full_data_path,key+"analysis_results_only_truepos.pkl"),"wb"))
+elif denoise_review:
+    pickle.dump(datasets,open(os.path.join(full_data_path,key+"analysis_results_denoised_review.pkl"),"wb"))
 else:
     pickle.dump(datasets,open(os.path.join(full_data_path,key+"analysis_results.pkl"),"wb"))
 

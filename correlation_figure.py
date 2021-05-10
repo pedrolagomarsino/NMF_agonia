@@ -27,17 +27,30 @@ hv.extension('matplotlib')
 
 
 PATH = '/media/pedro/DATAPART1/AGOnIA'
+PATH = '/mnt/DATAPART1/AGOnIA/AGOnIA_28042020'
 data_paths = ['CA1/Ch1','CA1/Ch2','L4','neurofinder','neurofinder_test','PNAS_RAW_tifs','VPM_corrected']
 llaves = ['CA1_Ch1','CA1_Ch2','L4','neurofinder','neurofinder_test','ABO','VPM_corrected']#'complete_figure_dict.pkl')):
-if os.path.exists(os.path.join(PATH,'complete_analysis_results.pkl')):
-    results = pickle.load(open(os.path.join(PATH,'complete_analysis_results.pkl'),'rb'))
+denoise_review = False
+if denoise_review:
+    if os.path.exists(os.path.join(PATH,'complete_analysis_results_denoised_review.pkl')):
+        results = pickle.load(open(os.path.join(PATH,'complete_analysis_results_denoised_review.pkl'),'rb'))
+    else:
+        results = {}
+        for i,path in enumerate(data_paths):
+            data_path = os.path.join(PATH,path)
+            dict = pickle.load(open(os.path.join(data_path,llaves[i]+'analysis_results_denoised_review.pkl'),'rb'))
+            results.update(dict)
+        pickle.dump(results,open(os.path.join(PATH,"complete_analysis_results_denoised_review.pkl"),"wb"))
 else:
-    results = {}
-    for i,path in enumerate(data_paths):
-        data_path = os.path.join(PATH,path)
-        dict = pickle.load(open(os.path.join(data_path,llaves[i]+'analysis_results.pkl'),'rb'))
-        results.update(dict)
-    pickle.dump(results,open(os.path.join(PATH,"complete_analysis_results.pkl"),"wb"))
+    if os.path.exists(os.path.join(PATH,'complete_analysis_results.pkl')):
+        results = pickle.load(open(os.path.join(PATH,'complete_analysis_results.pkl'),'rb'))
+    else:
+        results = {}
+        for i,path in enumerate(data_paths):
+            data_path = os.path.join(PATH,path)
+            dict = pickle.load(open(os.path.join(data_path,llaves[i]+'analysis_results.pkl'),'rb'))
+            results.update(dict)
+        pickle.dump(results,open(os.path.join(PATH,"complete_analysis_results.pkl"),"wb"))
 
 ######################
 ### Example traces ###
@@ -103,7 +116,10 @@ fig,ax = plt.subplots(figsize=(8,5))
 plt.title('AgoniaVsCaiman Trace Correlations',fontsize=15)
 plt.boxplot(corravsc_all)
 ax.set_xticklabels(results.keys())
-plt.savefig(os.path.join(PATH,'Correlation_agonia_vs_Caiman.svg'),format='svg')
+if denoise_review:
+    plt.savefig(os.path.join(PATH,'Correlation_agonia_vs_Caiman_denoised_review.svg'),format='svg')
+else:
+    plt.savefig(os.path.join(PATH,'Correlation_agonia_vs_Caiman.svg'),format='svg')
 plt.show()
 
 [np.median(val) for val in corravsc_all]
@@ -129,7 +145,10 @@ for i,key in enumerate(results.keys()):
 plt.legend(legend)#,loc ='lower right')
 plt.xlabel('log(Signal to noise ratio)')
 plt.ylabel('CaimanVSAgonia trace correlation')
-plt.savefig(os.path.join(PATH,'STNR_VS_Correlation.svg'),format='svg')
+if denoise_review:
+    plt.savefig(os.path.join(PATH,'STNR_VS_Correlation_denoised_review.svg'),format='svg')
+else:
+    plt.savefig(os.path.join(PATH,'STNR_VS_Correlation.svg'),format='svg')
 plt.show()
 
 # separate datasets-plots
@@ -139,7 +158,10 @@ for i,key in enumerate(results.keys()):
     ax[i%4,int(i/4)].legend(loc='lower right')
 fig.text(0.5, 0.04, 'log(Signal to noise ratio)', ha='center',size=20)
 fig.text(0.04, 0.5, 'CaimanVSAgonia trace correlation', va='center', rotation='vertical',size=20)
-plt.savefig(os.path.join(PATH,'STNR_VS_Correlation_separatedplots.svg'),format='svg')
+if denoise_review:
+    plt.savefig(os.path.join(PATH,'STNR_VS_Correlation_separatedplots_denoised_review.svg'),format='svg')
+else:
+    plt.savefig(os.path.join(PATH,'STNR_VS_Correlation_separatedplots.svg'),format='svg')
 plt.show()
 
 
